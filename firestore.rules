@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'factsknown178@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt']) &&
+        data.uid is string && data.uid == request.auth.uid &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.email is string && data.email.size() <= 254 &&
+        (!('favoriteSports' in data) || (data.favoriteSports is list && data.favoriteSports.size() <= 30)) &&
+        (!('favoriteTeams' in data) || (data.favoriteTeams is list && data.favoriteTeams.size() <= 50)) &&
+        (!('savedEvents' in data) || (data.savedEvents is list && data.savedEvents.size() <= 100));
+    }
+
+    function isValidContactMessage(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'subject', 'message', 'createdAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 160 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 4000;
+    }
+
+    // Users collection: PII isolated to owner or admin
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) && isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow update: if isValidId(userId) && (isOwner(userId) || isAdmin()) && isValidUserProfile(request.resource.data);
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Publicly readable sports catalog & editorial collections
+    match /sports/{sportId} {
+      allow get: if isValidId(sportId);
+      allow list: if true;
+      allow write: if isValidId(sportId) && isAdmin();
+    }
+
+    match /teams/{teamId} {
+      allow get: if isValidId(teamId);
+      allow list: if true;
+      allow write: if isValidId(teamId) && isAdmin();
+    }
+
+    match /competitions/{competitionId} {
+      allow get: if isValidId(competitionId);
+      allow list: if true;
+      allow write: if isValidId(competitionId) && isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow get: if isValidId(eventId);
+      allow list: if true;
+      allow write: if isValidId(eventId) && isAdmin();
+    }
+
+    match /news/{articleId} {
+      allow get: if isValidId(articleId);
+      allow list: if true;
+      allow write: if isValidId(articleId) && isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId);
+      allow list: if true;
+      allow write: if isValidId(categoryId) && isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow write: if isValidId(settingId) && isAdmin();
+    }
+
+    // Contact messages: anyone can submit, only admins can read/manage
+    match /contactMessages/{messageId} {
+      allow create: if isValidId(messageId) && isValidContactMessage(request.resource.data);
+      allow get, list, update, delete: if isAdmin();
+    }
+
+    // Audit logs: admin only
+    match /auditLogs/{logId} {
+      allow read, write: if isValidId(logId) && isAdmin();
+    }
+
+    // Admins registry: admin only
+    match /admins/{adminId} {
+      allow read, write: if isValidId(adminId) && isAdmin();
+    }
+  }
+}

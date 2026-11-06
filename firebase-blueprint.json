@@ -1,0 +1,206 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered KhelaDekH user profile and preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "favoriteSports": { "type": "array" },
+        "favoriteTeams": { "type": "array" },
+        "savedEvents": { "type": "array" },
+        "notificationPreferences": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "createdAt"]
+    },
+    "Sport": {
+      "title": "Sport",
+      "description": "Supported sports discipline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9\\-]+$", "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 500 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "featured": { "type": "boolean" }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Sports team or club",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "shortName": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "sportId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "country": { "type": "string", "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 500 },
+        "logoUrl": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "name", "shortName", "sportId"]
+    },
+    "Competition": {
+      "title": "Competition",
+      "description": "League, tournament, or championship",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "sportId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "country": { "type": "string", "maxLength": 80 },
+        "season": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "name", "sportId"]
+    },
+    "SportEvent": {
+      "title": "SportEvent",
+      "description": "Live, upcoming, or finished sports match/event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9\\-]+$", "maxLength": 160 },
+        "sportId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "competitionId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "teamIds": { "type": "array" },
+        "description": { "type": "string", "maxLength": 2000 },
+        "eventDate": { "type": "string", "maxLength": 32 },
+        "eventTime": { "type": "string", "maxLength": 32 },
+        "timezone": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["LIVE", "UPCOMING", "FINISHED"] },
+        "published": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "authorizedViewingUrl": { "type": "string", "maxLength": 500 },
+        "thumbnailUrl": { "type": "string", "maxLength": 500 },
+        "scoreSummary": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "sportId", "competitionId", "eventDate", "eventTime", "status", "published"]
+    },
+    "NewsArticle": {
+      "title": "NewsArticle",
+      "description": "Sports news article or editorial feature",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9\\-]+$", "maxLength": 180 },
+        "description": { "type": "string", "maxLength": 500 },
+        "content": { "type": "string", "maxLength": 20000 },
+        "categoryId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["PUBLISHED", "DRAFT"] },
+        "featured": { "type": "boolean" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "slug", "content", "categoryId", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "News or content category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9\\-]+$", "maxLength": 80 }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "User contact form submission",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "status": { "type": "string", "enum": ["NEW", "READ", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "email", "subject", "message", "createdAt"]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Global website configuration",
+      "type": "object",
+      "properties": {
+        "siteName": { "type": "string", "maxLength": 80 },
+        "tagline": { "type": "string", "maxLength": 200 },
+        "contactEmail": { "type": "string", "maxLength": 254 },
+        "footerText": { "type": "string", "maxLength": 300 },
+        "privacyPolicy": { "type": "string", "maxLength": 20000 },
+        "termsOfService": { "type": "string", "maxLength": 20000 }
+      }
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Administrative action audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 254 },
+        "action": { "type": "string", "maxLength": 120 },
+        "targetCollection": { "type": "string", "maxLength": 80 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "actorUid", "action", "targetCollection", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles and personal preferences"
+    },
+    "/sports/{sportId}": {
+      "schema": { "$ref": "#/entities/Sport" },
+      "description": "Supported sports"
+    },
+    "/teams/{teamId}": {
+      "schema": { "$ref": "#/entities/Team" },
+      "description": "Teams and clubs"
+    },
+    "/competitions/{competitionId}": {
+      "schema": { "$ref": "#/entities/Competition" },
+      "description": "Leagues and tournaments"
+    },
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/SportEvent" },
+      "description": "Sports events and matches"
+    },
+    "/news/{articleId}": {
+      "schema": { "$ref": "#/entities/NewsArticle" },
+      "description": "Sports news articles"
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "News categories"
+    },
+    "/contactMessages/{messageId}": {
+      "schema": { "$ref": "#/entities/ContactMessage" },
+      "description": "Contact form submissions"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Global site settings"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Admin audit logs"
+    }
+  }
+}

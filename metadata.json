@@ -1,0 +1,6 @@
+{
+  "name": "KhelaDekH",
+  "description": "KhelaDekH — Live sports, fixtures, news, and official match broadcasts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
