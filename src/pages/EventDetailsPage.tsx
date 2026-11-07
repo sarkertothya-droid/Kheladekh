@@ -1,13 +1,21 @@
-import React from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Bell, BellOff, Calendar, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { ArrowLeft, Bell, BellOff, Calendar, Clock, MessageSquare, Activity, BarChart3 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { EventCard } from '../components/EventCard';
+import { LiveMatchChat } from '../components/LiveMatchChat';
+import { LiveMatchStats } from '../components/LiveMatchStats';
+import { LiveMatchPoll } from '../components/LiveMatchPoll';
 
 export const EventDetailsPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
+  const autoFullscreen = searchParams.get('fullscreen') === 'true';
+  const initialResolution = searchParams.get('res') || undefined;
+  const [activeInteractiveTab, setActiveInteractiveTab] = useState<'chat' | 'stats' | 'poll'>('chat');
+
   const { events, sports, competitions, teams, toggleSavedEvent } = useData();
   const { user, profile } = useAuth();
 
@@ -49,7 +57,75 @@ export const EventDetailsPage: React.FC = () => {
         src={event.authorizedViewingUrl}
         poster={event.thumbnailUrl}
         title={event.title}
+        autoFullscreen={autoFullscreen}
+        initialResolution={initialResolution}
       />
+
+      {/* Interactive Match Center Tabs */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 p-1.5 bg-[#151E2B] rounded-2xl border border-white/10 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setActiveInteractiveTab('chat')}
+            className={`min-h-[42px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shrink-0 ${
+              activeInteractiveTab === 'chat'
+                ? 'bg-[#00B7FF] text-[#080B12] shadow-md shadow-[#00B7FF]/20'
+                : 'text-[#A5B1C2] hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>লাইভ চ্যাট (Live Chat)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveInteractiveTab('stats')}
+            className={`min-h-[42px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shrink-0 ${
+              activeInteractiveTab === 'stats'
+                ? 'bg-[#00B7FF] text-[#080B12] shadow-md shadow-[#00B7FF]/20'
+                : 'text-[#A5B1C2] hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            <span>ম্যাচ ইনটেল ও পরিসংখ্যান (Stats)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveInteractiveTab('poll')}
+            className={`min-h-[42px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shrink-0 ${
+              activeInteractiveTab === 'poll'
+                ? 'bg-[#00B7FF] text-[#080B12] shadow-md shadow-[#00B7FF]/20'
+                : 'text-[#A5B1C2] hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>ফ্যান প্রেডিকশন পোল (Fan Poll)</span>
+          </button>
+        </div>
+
+        {activeInteractiveTab === 'chat' && (
+          <LiveMatchChat
+            eventId={event.id}
+            eventTitle={event.title}
+            teams={eventTeams}
+          />
+        )}
+
+        {activeInteractiveTab === 'stats' && (
+          <LiveMatchStats
+            event={event}
+            teams={eventTeams}
+          />
+        )}
+
+        {activeInteractiveTab === 'poll' && (
+          <LiveMatchPoll
+            eventId={event.id}
+            teams={eventTeams}
+          />
+        )}
+      </div>
 
       {/* Event Header & Metadata */}
       <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 sm:p-8 space-y-6">

@@ -9,6 +9,9 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, testFirestoreConnection } from '../services/firebase';
 import {
+  BASKETBALL_IMAGE,
+  CRICKET_IMAGE,
+  FOOTBALL_IMAGE,
   INITIAL_CATEGORIES,
   INITIAL_COMPETITIONS,
   INITIAL_EVENTS,
@@ -16,6 +19,7 @@ import {
   INITIAL_SETTINGS,
   INITIAL_SPORTS,
   INITIAL_TEAMS,
+  TENNIS_IMAGE,
 } from '../data/seedData';
 import {
   AuditLog,
@@ -41,6 +45,9 @@ interface DataContextType {
   settings: SiteSettings;
   loading: boolean;
   isFirestoreConnected: boolean;
+  autoSyncing: boolean;
+  lastAutoSyncTime: string | null;
+  syncLiveSportsFromGoogle: (silent?: boolean) => Promise<void>;
   toggleFavoriteSport: (sportId: string) => Promise<void>;
   toggleFavoriteTeam: (teamId: string) => Promise<void>;
   toggleSavedEvent: (eventId: string) => Promise<void>;
@@ -76,12 +83,111 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [settings, setSettings] = useState<SiteSettings>(INITIAL_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [isFirestoreConnected, setIsFirestoreConnected] = useState(false);
+  const [autoSyncing, setAutoSyncing] = useState(false);
+  const [lastAutoSyncTime, setLastAutoSyncTime] = useState<string | null>(null);
+
+  // Automated Sports Feed Sync from server (Google Search grounded)
+  const syncLiveSportsFromGoogle = async (silent = true) => {
+    try {
+      setAutoSyncing(true);
+      const res = await fetch('/api/sports/auto-feed');
+      if (!res.ok) throw new Error('Auto feed request failed');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        setLastAutoSyncTime(new Date().toLocaleTimeString());
+
+        // Process incoming items
+        for (const item of json.data) {
+          const sportKey = item.sportId || 'football';
+          const defaultThumb =
+            sportKey === 'cricket'
+              ? CRICKET_IMAGE
+              : sportKey === 'football'
+              ? FOOTBALL_IMAGE
+              : sportKey === 'basketball'
+              ? BASKETBALL_IMAGE
+              : TENNIS_IMAGE;
+
+          const teamIds: string[] = [];
+          if (item.teamA?.name) {
+            const tAId = item.teamA.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            teamIds.push(tAId);
+            const teamAObj: Team = {
+              id: tAId,
+              name: item.teamA.name,
+              shortName: item.teamA.shortName || item.teamA.name.slice(0, 3).toUpperCase(),
+              sportId: sportKey,
+              country: item.teamA.country || 'International',
+            };
+            await setDoc(doc(db, 'teams', tAId), teamAObj, { merge: true }).catch(() => {});
+          }
+
+          if (item.teamB?.name) {
+            const tBId = item.teamB.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            teamIds.push(tBId);
+            const teamBObj: Team = {
+              id: tBId,
+              name: item.teamB.name,
+              shortName: item.teamB.shortName || item.teamB.name.slice(0, 3).toUpperCase(),
+              sportId: sportKey,
+              country: item.teamB.country || 'International',
+            };
+            await setDoc(doc(db, 'teams', tBId), teamBObj, { merge: true }).catch(() => {});
+          }
+
+          const compId = (item.competition || 'International')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-');
+          const compObj: Competition = {
+            id: compId,
+            name: item.competition || 'International Cup',
+            sportId: sportKey,
+            country: 'International',
+          };
+          await setDoc(doc(db, 'competitions', compId), compObj, { merge: true }).catch(() => {});
+
+          const evId = item.id || `${item.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-')}_auto`;
+          const evObj: SportEvent = {
+            id: evId,
+            title: item.title,
+            slug: item.id || evId,
+            sportId: sportKey,
+            competitionId: compId,
+            teamIds,
+            description: item.description || 'Live match automatically updated from Google Sports feed.',
+            eventDate: item.eventDate || new Date().toISOString().split('T')[0],
+            eventTime: item.eventTime || 'Live',
+            timezone: item.timezone || 'UTC',
+            status: (item.status === 'LIVE' || item.status === 'UPCOMING' || item.status === 'FINISHED') ? item.status : 'LIVE',
+            published: true,
+            featured: item.status === 'LIVE',
+            authorizedViewingUrl: item.authorizedViewingUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+            thumbnailUrl: defaultThumb,
+            scoreSummary: item.scoreSummary || (item.status === 'LIVE' ? 'In Progress' : ''),
+            updatedAt: new Date().toISOString(),
+          };
+
+          await setDoc(doc(db, 'events', evId), evObj, { merge: true }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      if (!silent) console.warn('Auto-sync sports failed:', err);
+    } finally {
+      setAutoSyncing(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
     testFirestoreConnection().then((connected) => {
       if (mounted) setIsFirestoreConnected(connected);
     });
+
+    // Run initial auto-sync once connected, then every 3 minutes
+    syncLiveSportsFromGoogle(true);
+    const intervalId = setInterval(() => {
+      syncLiveSportsFromGoogle(true);
+    }, 3 * 60 * 1000); // every 3 minutes
 
     const unsubSports = onSnapshot(
       collection(db, 'sports'),
@@ -156,6 +262,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       mounted = false;
+      clearInterval(intervalId);
       unsubSports();
       unsubTeams();
       unsubComps();
@@ -422,6 +529,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         settings,
         loading,
         isFirestoreConnected,
+        autoSyncing,
+        lastAutoSyncTime,
+        syncLiveSportsFromGoogle,
         toggleFavoriteSport,
         toggleFavoriteTeam,
         toggleSavedEvent,

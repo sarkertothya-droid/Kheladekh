@@ -159,6 +159,34 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "actorUid", "action", "targetCollection", "createdAt"]
+    },
+    "MatchChatMessage": {
+      "title": "MatchChatMessage",
+      "description": "Live match discussion message sent during an event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "eventId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "userAvatar": { "type": "string", "maxLength": 500 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "teamSupport": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "eventId", "userId", "userName", "text", "createdAt"]
+    },
+    "MatchVote": {
+      "title": "MatchVote",
+      "description": "Fan vote cast on match prediction",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "eventId": { "type": "string", "maxLength": 128 },
+        "prediction": { "type": "string", "maxLength": 64 },
+        "votedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "eventId", "prediction"]
     }
   },
   "firestore": {
@@ -181,6 +209,14 @@
     "/events/{eventId}": {
       "schema": { "$ref": "#/entities/SportEvent" },
       "description": "Sports events and matches"
+    },
+    "/events/{eventId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/MatchChatMessage" },
+      "description": "Real-time match chat discussion messages"
+    },
+    "/events/{eventId}/votes/{userId}": {
+      "schema": { "$ref": "#/entities/MatchVote" },
+      "description": "Fan match prediction votes"
     },
     "/news/{articleId}": {
       "schema": { "$ref": "#/entities/NewsArticle" },

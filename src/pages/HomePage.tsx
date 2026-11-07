@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Radio, Calendar, Trophy, Newspaper } from 'lucide-react';
+import { ArrowRight, Radio, Calendar, Trophy, Newspaper, Sparkles, Flame } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { HERO_IMAGE } from '../data/seedData';
 import { EventCard } from '../components/EventCard';
@@ -8,14 +8,49 @@ import { NewsCard } from '../components/NewsCard';
 
 export const HomePage: React.FC = () => {
   const { events, sports, news, loading } = useData();
+  const [selectedSport, setSelectedSport] = useState<string>('all');
 
   const publishedEvents = events.filter((e) => e.published);
-  const liveEvents = publishedEvents.filter((e) => e.status === 'LIVE');
-  const upcomingEvents = publishedEvents.filter((e) => e.status === 'UPCOMING');
+  const filteredEvents =
+    selectedSport === 'all'
+      ? publishedEvents
+      : publishedEvents.filter((e) => e.sportId === selectedSport);
+
+  const liveEvents = filteredEvents.filter((e) => e.status === 'LIVE');
+  const upcomingEvents = filteredEvents.filter((e) => e.status === 'UPCOMING');
+  const allLive = publishedEvents.filter((e) => e.status === 'LIVE');
   const publishedNews = news.filter((n) => n.status === 'PUBLISHED').slice(0, 3);
 
   return (
-    <div className="space-y-14">
+    <div className="space-y-10 sm:space-y-12">
+      {/* Live Match Ticker Tape */}
+      {allLive.length > 0 && (
+        <div className="bg-[#101722] border border-white/10 rounded-2xl p-2.5 flex items-center gap-3 overflow-hidden shadow-lg">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/20 text-red-400 font-mono text-xs font-bold shrink-0">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            LIVE TICKER
+          </div>
+          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-0.5">
+            {allLive.map((m) => (
+              <Link
+                key={m.id}
+                to={`/events/${m.slug}`}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/10 hover:border-[#00B7FF] text-xs transition-colors flex items-center gap-2 group"
+              >
+                <span className="font-semibold text-white group-hover:text-[#00B7FF] truncate max-w-[150px] sm:max-w-[200px]">
+                  {m.title}
+                </span>
+                {m.scoreSummary && (
+                  <span className="px-1.5 py-0.5 rounded bg-[#16D98A]/20 text-[#16D98A] font-mono text-[11px] font-bold">
+                    {m.scoreSummary}
+                  </span>
+                )}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <section className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#101722]">
         <div className="aspect-[16/9] md:aspect-[21/9] w-full relative">
@@ -62,19 +97,59 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
+      {/* Multi-Sport Filter Control Bar */}
+      <div className="flex items-center gap-2 p-1.5 bg-[#101722] rounded-2xl border border-white/10 overflow-x-auto no-scrollbar">
+        {[
+          { id: 'all', label: 'All Sports', icon: '🏆', total: publishedEvents.length },
+          { id: 'cricket', label: 'Cricket', icon: '🏏', total: publishedEvents.filter(e => e.sportId === 'cricket').length },
+          { id: 'football', label: 'Football', icon: '⚽', total: publishedEvents.filter(e => e.sportId === 'football').length },
+          { id: 'basketball', label: 'Basketball', icon: '🏀', total: publishedEvents.filter(e => e.sportId === 'basketball').length },
+          { id: 'tennis', label: 'Tennis', icon: '🎾', total: publishedEvents.filter(e => e.sportId === 'tennis').length },
+        ].map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSelectedSport(s.id)}
+            className={`min-h-[42px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shrink-0 ${
+              selectedSport === s.id
+                ? 'bg-[#00B7FF] text-[#080B12] shadow-md shadow-[#00B7FF]/20'
+                : 'text-[#A5B1C2] hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <span>{s.icon}</span>
+            <span>{s.label}</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                selectedSport === s.id
+                  ? 'bg-black/20 text-[#080B12]'
+                  : 'bg-white/10 text-[#A5B1C2]'
+              }`}
+            >
+              {s.total}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Live Events Section */}
       <section>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-2.5">
             <Radio className="w-5 h-5 text-[#16D98A]" />
             <h2 className="font-display text-xl sm:text-2xl font-bold text-white">Live Now</h2>
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#16D98A]/10 text-[#16D98A] text-[11px] font-mono font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#16D98A] animate-pulse" />
+              Auto-updating
+            </span>
           </div>
-          <Link
-            to="/live"
-            className="text-xs font-semibold text-[#00B7FF] hover:underline inline-flex items-center gap-1"
-          >
-            View all live <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              to="/live"
+              className="text-xs font-semibold text-[#00B7FF] hover:underline inline-flex items-center gap-1"
+            >
+              View all live <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </div>
 
         {loading ? (

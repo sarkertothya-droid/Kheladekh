@@ -132,7 +132,52 @@ export const ProfilePage: React.FC = () => {
 
       {/* Notification Preferences */}
       <section className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
-        <h2 className="font-display text-lg font-bold text-white">Notification Preferences</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg font-bold text-white">Notification Preferences</h2>
+          <span className="text-xs text-[#00B7FF] font-medium">Desktop &amp; In-App</span>
+        </div>
+
+        {/* Browser Push Permission State & Action */}
+        <div className="p-4 rounded-xl bg-[#101722] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Live Match Push Notifications</p>
+            <p className="text-xs text-[#A5B1C2] mt-0.5">
+              Receive desktop system popups when your favorite teams start playing.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted' ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await Notification.requestPermission();
+                    if (res === 'granted') {
+                      await updateNotificationPreferences({
+                        ...profile.notificationPreferences,
+                        browserNotifications: true,
+                      });
+                      new Notification('KhelaDekH Push Enabled 🔔', {
+                        body: 'You will now receive alerts when your favorite teams start live!',
+                        icon: '/src/assets/images/kheladekh_logo_1793952334814.jpg',
+                      });
+                    }
+                  } catch (err) {
+                    console.error(err);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold hover:bg-[#33C5FF] transition-colors whitespace-nowrap"
+              >
+                Enable Push Alerts
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#16D98A]/10 text-[#16D98A] text-xs font-semibold">
+                <Check className="w-3.5 h-3.5" /> Push Enabled
+              </span>
+            )}
+          </div>
+        </div>
+
         <div className="space-y-3">
           {(
             [

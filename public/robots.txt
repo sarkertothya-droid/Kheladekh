@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /profile
+
+Sitemap: https://kheladekh.vercel.app/sitemap.xml

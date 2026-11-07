@@ -18,6 +18,14 @@ import {
   Plus,
   Trash2,
   Database,
+  Zap,
+  RefreshCw,
+  Sparkles,
+  Check,
+  Globe,
+  Play,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, uploadMediaFile } from '../lib/firebase';
@@ -27,6 +35,7 @@ import { AuditLog, ContactMessage, EventStatus, SportEvent, UserProfile } from '
 
 type AdminTab =
   | 'dashboard'
+  | 'automation'
   | 'events'
   | 'sports'
   | 'teams'
@@ -64,6 +73,9 @@ export const AdminPage: React.FC = () => {
     saveCategory,
     deleteCategory,
     saveSettings,
+    autoSyncing,
+    lastAutoSyncTime,
+    syncLiveSportsFromGoogle,
   } = useData();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -71,6 +83,10 @@ export const AdminPage: React.FC = () => {
   const [messagesList, setMessagesList] = useState<ContactMessage[]>([]);
   const [auditList, setAuditList] = useState<AuditLog[]>([]);
   const [statusMsg, setStatusMsg] = useState('');
+  const [quickScoreMap, setQuickScoreMap] = useState<Record<string, string>>({});
+  const [testStreamUrl, setTestStreamUrl] = useState<string | null>(null);
+  const [filterSport, setFilterSport] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
 
   // Event form state
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -235,16 +251,67 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const handleAutoUpdateMatchStatuses = async () => {
+    const now = new Date();
+    let updatedCount = 0;
+    for (const ev of events) {
+      if (!ev.eventDate || !ev.eventTime) continue;
+      try {
+        const matchDateTime = new Date(`${ev.eventDate}T${ev.eventTime}:00`);
+        const diffMinutes = (now.getTime() - matchDateTime.getTime()) / (1000 * 60);
+
+        if (diffMinutes >= 0 && diffMinutes <= 180 && ev.status === 'UPCOMING') {
+          await saveEvent({ ...ev, status: 'LIVE', featured: true });
+          updatedCount++;
+        } else if (diffMinutes > 180 && ev.status === 'LIVE') {
+          await saveEvent({ ...ev, status: 'FINISHED', featured: false });
+          updatedCount++;
+        }
+      } catch {
+        // Skip malformed dates
+      }
+    }
+    notify(`Automated Status Engine: Checked matches and updated ${updatedCount} live/finished statuses.`);
+  };
+
+  const handlePublishAllEvents = async () => {
+    let count = 0;
+    for (const ev of events) {
+      if (!ev.published) {
+        await saveEvent({ ...ev, published: true });
+        count++;
+      }
+    }
+    notify(`Batch Action: Published ${count} events.`);
+  };
+
+  const handleQuickStatusChange = async (event: SportEvent, newStatus: EventStatus) => {
+    await saveEvent({ ...event, status: newStatus });
+    notify(`Updated "${event.title}" to ${newStatus}`);
+  };
+
+  const handleQuickScoreSave = async (event: SportEvent) => {
+    const newScore = quickScoreMap[event.id] ?? event.scoreSummary ?? '';
+    await saveEvent({ ...event, scoreSummary: newScore });
+    notify(`Saved score "${newScore}" for ${event.title}`);
+  };
+
+  const handleQuickFeaturedToggle = async (event: SportEvent) => {
+    await saveEvent({ ...event, featured: !event.featured });
+    notify(`${event.featured ? 'Unpinned from' : 'Pinned to'} featured matches.`);
+  };
+
   const sidebarItems: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
-    { id: 'events', label: 'Events', icon: <Calendar className="w-4 h-4" /> },
+    { id: 'dashboard', label: 'Dashboard Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'automation', label: 'Automation & AI Feeds', icon: <Zap className="w-4 h-4 text-[#00B7FF]" /> },
+    { id: 'events', label: 'Match Controller', icon: <Calendar className="w-4 h-4" /> },
     { id: 'sports', label: 'Sports', icon: <Trophy className="w-4 h-4" /> },
     { id: 'teams', label: 'Teams', icon: <Users className="w-4 h-4" /> },
     { id: 'competitions', label: 'Competitions', icon: <Award className="w-4 h-4" /> },
-    { id: 'news', label: 'News', icon: <Newspaper className="w-4 h-4" /> },
+    { id: 'news', label: 'News & Articles', icon: <Newspaper className="w-4 h-4" /> },
     { id: 'categories', label: 'Categories', icon: <FolderTree className="w-4 h-4" /> },
-    { id: 'users', label: 'Users', icon: <UserCheck className="w-4 h-4" /> },
-    { id: 'media', label: 'Media', icon: <Image className="w-4 h-4" /> },
+    { id: 'users', label: 'User Profiles', icon: <UserCheck className="w-4 h-4" /> },
+    { id: 'media', label: 'Media Library', icon: <Image className="w-4 h-4" /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell className="w-4 h-4" /> },
     { id: 'messages', label: 'Contact Messages', icon: <Mail className="w-4 h-4" /> },
     { id: 'settings', label: 'Website Settings', icon: <Settings className="w-4 h-4" /> },
@@ -342,9 +409,203 @@ export const AdminPage: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'automation' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="font-display text-2xl font-extrabold text-white flex items-center gap-2">
+                  <Zap className="w-6 h-6 text-[#00B7FF]" />
+                  Automation & AI Feeds Hub
+                </h1>
+                <p className="text-xs text-[#A5B1C2] mt-1">
+                  Manage continuous Google Search grounded sports feeds and automated match lifecycle.
+                </p>
+              </div>
+
+              {/* Force Sync Button */}
+              <button
+                type="button"
+                disabled={autoSyncing}
+                onClick={async () => {
+                  notify('Fetching live sports via Google Search Grounding...');
+                  await syncLiveSportsFromGoogle(false);
+                  notify('Sports feed synchronized successfully!');
+                }}
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] disabled:opacity-50 text-[#080B12] text-xs font-bold inline-flex items-center gap-2 transition-all shadow-lg shadow-[#00B7FF]/20 self-start sm:self-auto"
+              >
+                <RefreshCw className={`w-4 h-4 ${autoSyncing ? 'animate-spin' : ''}`} />
+                <span>{autoSyncing ? 'Syncing Feeds...' : 'Run Google Search Sync Now'}</span>
+              </button>
+            </div>
+
+            {/* Automation Status Dashboard Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
+                  <span>AI Grounding Engine</span>
+                  <span className="w-2 h-2 rounded-full bg-[#16D98A] animate-pulse" />
+                </div>
+                <p className="font-display text-lg font-bold text-white">Google Search</p>
+                <p className="text-[11px] text-[#16D98A] font-mono">Gemini 2.5 Flash Grounded</p>
+              </div>
+
+              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
+                  <span>Auto-Sync Cadence</span>
+                  <Clock className="w-3.5 h-3.5 text-[#00B7FF]" />
+                </div>
+                <p className="font-display text-lg font-bold text-white">Every 3 Minutes</p>
+                <p className="text-[11px] text-[#A5B1C2] font-mono">
+                  {lastAutoSyncTime ? `Last: ${lastAutoSyncTime}` : 'Continuous background sync'}
+                </p>
+              </div>
+
+              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
+                  <span>Catalog Status</span>
+                  <Globe className="w-3.5 h-3.5 text-[#16D98A]" />
+                </div>
+                <p className="font-display text-lg font-bold text-white tabular-nums">
+                  {events.length} Matches
+                </p>
+                <p className="text-[11px] text-[#A5B1C2] font-mono">
+                  {events.filter((e) => e.status === 'LIVE').length} Live Broadcasting
+                </p>
+              </div>
+
+              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
+                  <span>Multi-Sport Coverage</span>
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+                <p className="font-display text-lg font-bold text-white">4 Major Sports</p>
+                <p className="text-[11px] text-[#A5B1C2] font-mono">Cricket, Football, Tennis, NBA</p>
+              </div>
+            </div>
+
+            {/* Quick Automation Actions Bar */}
+            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
+              <h2 className="text-sm font-bold text-white">One-Click Automation Tasks</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={handleAutoUpdateMatchStatuses}
+                  className="p-4 rounded-xl bg-[#101722] hover:bg-[#1A2332] border border-white/10 hover:border-[#00B7FF] text-left transition-all group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-white group-hover:text-[#00B7FF]">
+                      Auto-Update Match Statuses
+                    </span>
+                    <Clock className="w-4 h-4 text-[#00B7FF]" />
+                  </div>
+                  <p className="text-[11px] text-[#A5B1C2]">
+                    Detects match start times and automatically transitions upcoming fixtures to LIVE or FINISHED.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePublishAllEvents}
+                  className="p-4 rounded-xl bg-[#101722] hover:bg-[#1A2332] border border-white/10 hover:border-[#16D98A] text-left transition-all group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-white group-hover:text-[#16D98A]">
+                      Publish All Discovered Events
+                    </span>
+                    <CheckCircle2 className="w-4 h-4 text-[#16D98A]" />
+                  </div>
+                  <p className="text-[11px] text-[#A5B1C2]">
+                    Immediately makes all newly synced Google sports matches live and visible to all fans.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await seedDatabase();
+                    notify('Master multi-sport verified catalog restored.');
+                  }}
+                  className="p-4 rounded-xl bg-[#101722] hover:bg-[#1A2332] border border-white/10 hover:border-amber-400 text-left transition-all group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-white group-hover:text-amber-400">
+                      Seed Default Verified Catalog
+                    </span>
+                    <Database className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <p className="text-[11px] text-[#A5B1C2]">
+                    Restores verified multi-resolution streams, teams, categories, and international competitions.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Active Automated Disciplines Overview */}
+            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
+              <h2 className="text-sm font-bold text-white">Active Automated Sports Feeds</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { id: 'cricket', name: 'Cricket', count: events.filter(e => e.sportId === 'cricket').length, live: events.filter(e => e.sportId === 'cricket' && e.status === 'LIVE').length, icon: '🏏' },
+                  { id: 'football', name: 'Football', count: events.filter(e => e.sportId === 'football').length, live: events.filter(e => e.sportId === 'football' && e.status === 'LIVE').length, icon: '⚽' },
+                  { id: 'basketball', name: 'Basketball', count: events.filter(e => e.sportId === 'basketball').length, live: events.filter(e => e.sportId === 'basketball' && e.status === 'LIVE').length, icon: '🏀' },
+                  { id: 'tennis', name: 'Tennis', count: events.filter(e => e.sportId === 'tennis').length, live: events.filter(e => e.sportId === 'tennis' && e.status === 'LIVE').length, icon: '🎾' },
+                ].map(sportFeed => (
+                  <div key={sportFeed.id} className="bg-[#101722] rounded-xl p-4 border border-white/10 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{sportFeed.icon}</span>
+                        <span className="text-xs font-bold text-white">{sportFeed.name}</span>
+                      </div>
+                      <p className="text-[11px] text-[#A5B1C2] mt-1 font-mono">
+                        {sportFeed.count} total · <span className="text-[#16D98A] font-bold">{sportFeed.live} Live</span>
+                      </p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#16D98A]/20 text-[#16D98A]">
+                      AUTO
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'events' && (
           <div className="space-y-6">
-            <h1 className="font-display text-2xl font-extrabold text-white">Manage Events</h1>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="font-display text-2xl font-extrabold text-white">Match Controller</h1>
+                <p className="text-xs text-[#A5B1C2] mt-0.5">
+                  Update live scores in 1 click, toggle match status, or manage fixtures.
+                </p>
+              </div>
+
+              {/* Filters */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={filterSport}
+                  onChange={(e) => setFilterSport(e.target.value)}
+                  className="h-9 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-xs text-white"
+                >
+                  <option value="all">All Sports</option>
+                  <option value="cricket">Cricket</option>
+                  <option value="football">Football</option>
+                  <option value="basketball">Basketball</option>
+                  <option value="tennis">Tennis</option>
+                </select>
+
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="h-9 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-xs text-white"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="LIVE">Live Now</option>
+                  <option value="UPCOMING">Upcoming</option>
+                  <option value="FINISHED">Finished</option>
+                </select>
+              </div>
+            </div>
             <form
               onSubmit={handleCreateEvent}
               className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4"
@@ -460,48 +721,146 @@ export const AdminPage: React.FC = () => {
             </form>
 
             <div className="space-y-3">
-              {events.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-4 flex items-center justify-between gap-4"
-                >
-                  <div>
-                    <p className="text-sm font-bold text-white">{ev.title}</p>
-                    <p className="text-xs text-[#A5B1C2] font-mono">
-                      {ev.status} · {ev.eventDate} {ev.eventTime}
-                    </p>
+              {events
+                .filter((e) => filterSport === 'all' || e.sportId === filterSport)
+                .filter((e) => filterStatus === 'all' || e.status === filterStatus)
+                .map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="bg-[#151E2B] rounded-2xl border border-white/10 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:border-white/20"
+                  >
+                    {/* Left Info */}
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#00B7FF] bg-[#00B7FF]/15 px-2 py-0.5 rounded">
+                          {ev.sportId}
+                        </span>
+                        <span className="text-xs text-[#A5B1C2] font-mono">
+                          {ev.eventDate} · {ev.eventTime}
+                        </span>
+                        {ev.featured && (
+                          <span className="text-[10px] font-bold text-amber-400 bg-amber-400/15 px-1.5 py-0.2 rounded font-mono">
+                            ★ FEATURED
+                          </span>
+                        )}
+                        {!ev.published && (
+                          <span className="text-[10px] font-bold text-red-400 bg-red-400/15 px-1.5 py-0.2 rounded font-mono">
+                            DRAFT
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm sm:text-base font-bold text-white truncate">{ev.title}</p>
+                    </div>
+
+                    {/* Middle: 1-Click Inline Score Editor */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="text"
+                        defaultValue={ev.scoreSummary || ''}
+                        onChange={(e) =>
+                          setQuickScoreMap((prev) => ({ ...prev, [ev.id]: e.target.value }))
+                        }
+                        placeholder="Live Score"
+                        className="w-28 sm:w-36 h-9 px-2.5 rounded-lg bg-[#101722] border border-white/15 text-xs text-white font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleQuickScoreSave(ev)}
+                        title="Save Live Score"
+                        className="h-9 px-2.5 rounded-lg bg-white/10 hover:bg-[#00B7FF] hover:text-[#080B12] text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Save</span>
+                      </button>
+                    </div>
+
+                    {/* Right: 1-Click Status Switcher & Actions */}
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      {/* 1-Click Status Pills */}
+                      <div className="flex items-center gap-1 bg-[#101722] p-1 rounded-xl border border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatusChange(ev, 'LIVE')}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                            ev.status === 'LIVE'
+                              ? 'bg-[#16D98A] text-[#080B12] shadow-sm'
+                              : 'text-[#A5B1C2] hover:text-white'
+                          }`}
+                        >
+                          LIVE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatusChange(ev, 'UPCOMING')}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                            ev.status === 'UPCOMING'
+                              ? 'bg-[#00B7FF] text-[#080B12] shadow-sm'
+                              : 'text-[#A5B1C2] hover:text-white'
+                          }`}
+                        >
+                          UPCOMING
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatusChange(ev, 'FINISHED')}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                            ev.status === 'FINISHED'
+                              ? 'bg-white/20 text-white shadow-sm'
+                              : 'text-[#A5B1C2] hover:text-white'
+                          }`}
+                        >
+                          FINISHED
+                        </button>
+                      </div>
+
+                      {/* Featured Star Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => handleQuickFeaturedToggle(ev)}
+                        title={ev.featured ? 'Remove from Featured' : 'Set as Featured'}
+                        className={`p-2 rounded-xl border transition-colors ${
+                          ev.featured
+                            ? 'bg-amber-400/20 border-amber-400/40 text-amber-400'
+                            : 'bg-[#101722] border-white/10 text-[#A5B1C2] hover:text-white'
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Edit Full Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingEventId(ev.id);
+                          setEvTitle(ev.title);
+                          setEvSport(ev.sportId);
+                          setEvComp(ev.competitionId);
+                          setEvDate(ev.eventDate);
+                          setEvTime(ev.eventTime);
+                          setEvStatus(ev.status);
+                          setEvStream(ev.authorizedViewingUrl || '');
+                          setEvThumb(ev.thumbnailUrl || '');
+                          setEvScore(ev.scoreSummary || '');
+                          setEvDesc(ev.description);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[#101722] text-xs font-semibold text-[#00B7FF] hover:border hover:border-[#00B7FF]"
+                      >
+                        Edit
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={() => deleteEvent(ev.id)}
+                        aria-label="Delete event"
+                        className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingEventId(ev.id);
-                        setEvTitle(ev.title);
-                        setEvSport(ev.sportId);
-                        setEvComp(ev.competitionId);
-                        setEvDate(ev.eventDate);
-                        setEvTime(ev.eventTime);
-                        setEvStatus(ev.status);
-                        setEvStream(ev.authorizedViewingUrl || '');
-                        setEvThumb(ev.thumbnailUrl || '');
-                        setEvScore(ev.scoreSummary || '');
-                        setEvDesc(ev.description);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-[#101722] text-xs font-semibold text-[#00B7FF]"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteEvent(ev.id)}
-                      aria-label="Delete event"
-                      className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
         )}

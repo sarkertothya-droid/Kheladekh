@@ -74,6 +74,18 @@ export interface NotificationPreferences {
   eventReminders: boolean;
   newEvents: boolean;
   newsAlerts: boolean;
+  browserNotifications?: boolean;
+}
+
+export interface InAppAlert {
+  id: string;
+  title: string;
+  body: string;
+  eventId?: string;
+  slug?: string;
+  teamNames?: string[];
+  timestamp: number;
+  read: boolean;
 }
 
 export interface UserProfile {
@@ -114,5 +126,16 @@ export interface AuditLog {
   action: string;
   targetCollection: string;
   targetId: string;
+  createdAt: string;
+}
+
+export interface MatchChatMessage {
+  id: string;
+  eventId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  text: string;
+  teamSupport?: string;
   createdAt: string;
 }

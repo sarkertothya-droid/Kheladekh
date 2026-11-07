@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Trophy, Radio, Newspaper, User, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { NotificationDropdown } from './NotificationDropdown';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
@@ -84,8 +85,8 @@ export const Navbar: React.FC = () => {
             )}
           </nav>
 
-          {/* Zone 3: Primary Action + Search */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Zone 3: Primary Action + Search + Notification Dropdown */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link
               to="/search"
               aria-label="Search"
@@ -93,6 +94,7 @@ export const Navbar: React.FC = () => {
             >
               <Search className="w-4 h-4" />
             </Link>
+            <NotificationDropdown />
             {user ? (
               <Link
                 to="/profile"
