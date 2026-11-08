@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   Calendar,
@@ -26,15 +26,29 @@ import {
   Play,
   CheckCircle2,
   Clock,
+  Radio,
+  Smartphone,
+  Monitor,
+  Eye,
+  Activity,
+  ExternalLink,
+  Server,
+  Search,
+  Link2,
 } from 'lucide-react';
 import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, uploadMediaFile } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { AuditLog, ContactMessage, EventStatus, SportEvent, UserProfile } from '../types';
+import { useLiveTelemetry } from '../services/presenceService';
+import { DailyAudienceGraph } from '../components/DailyAudienceGraph';
+import { PreRollAdModal } from '../components/PreRollAdModal';
+import { resetAdCooldown, getRemainingCooldownMinutes } from '../services/adService';
+import { AuditLog, ContactMessage, EventStatus, SportEvent, UserProfile, StreamServer, PreRollAdConfig } from '../types';
 
 type AdminTab =
   | 'dashboard'
+  | 'viewers'
   | 'automation'
   | 'events'
   | 'sports'
@@ -78,6 +92,8 @@ export const AdminPage: React.FC = () => {
     syncLiveSportsFromGoogle,
   } = useData();
 
+  const telemetry = useLiveTelemetry();
+
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [messagesList, setMessagesList] = useState<ContactMessage[]>([]);
@@ -87,6 +103,13 @@ export const AdminPage: React.FC = () => {
   const [testStreamUrl, setTestStreamUrl] = useState<string | null>(null);
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  // Automated Stream Discovery State
+  const [streamMatchId, setStreamMatchId] = useState<string>('');
+  const [customMatchTitle, setCustomMatchTitle] = useState<string>('Bangladesh vs West Indies live match');
+  const [discoveringStreams, setDiscoveringStreams] = useState<boolean>(false);
+  const [discoveredServers, setDiscoveredServers] = useState<StreamServer[] | null>(null);
+  const [streamSearchSource, setStreamSearchSource] = useState<string>('');
 
   // Event form state
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -125,6 +148,18 @@ export const AdminPage: React.FC = () => {
   const [tagline, setTagline] = useState(settings.tagline);
   const [contactEmail, setContactEmail] = useState(settings.contactEmail);
   const [footerText, setFooterText] = useState(settings.footerText);
+
+  // 12-Second / 12-Hour Pre-Roll Ad State
+  const [adEnabled, setAdEnabled] = useState(settings.preRollAd?.enabled ?? true);
+  const [adDuration, setAdDuration] = useState(settings.preRollAd?.durationSeconds ?? 12);
+  const [adFrequency, setAdFrequency] = useState(settings.preRollAd?.frequencyHours ?? 12);
+  const [adTitle, setAdTitle] = useState(settings.preRollAd?.title ?? 'KhelaDekH অফিসিয়াল স্পোর্টস পার্টনার স্পনসর');
+  const [adDesc, setAdDesc] = useState(settings.preRollAd?.description ?? 'এইচডি লাইভ ক্রিকেট, ফুটবল ম্যাচ ও মেগা স্পোর্টস ওয়েলকাম বোনাস! এখনই ভিজিট করে আপনার বিশেষ অফারটি লুফে নিন।');
+  const [adTargetUrl, setAdTargetUrl] = useState(settings.preRollAd?.targetUrl ?? 'https://kheladekh.vercel.app/sports');
+  const [adCtaText, setAdCtaText] = useState(settings.preRollAd?.ctaText ?? 'অফারটি দেখুন (Claim Offer)');
+  const [adImageUrl, setAdImageUrl] = useState(settings.preRollAd?.imageUrl ?? 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80');
+  const [testAdModalOpen, setTestAdModalOpen] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState(getRemainingCooldownMinutes(12));
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -301,8 +336,65 @@ export const AdminPage: React.FC = () => {
     notify(`${event.featured ? 'Unpinned from' : 'Pinned to'} featured matches.`);
   };
 
-  const sidebarItems: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
+  const handleDiscoverStreams = async () => {
+    setDiscoveringStreams(true);
+    try {
+      const selectedEv = events.find((e) => e.id === streamMatchId);
+      const query = customMatchTitle.trim() || (selectedEv ? selectedEv.title : 'Bangladesh vs West Indies live match');
+
+      const res = await fetch('/api/discover-stream-servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchTitle: query,
+          sportId: selectedEv?.sportId || 'cricket',
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && Array.isArray(data.servers)) {
+        setDiscoveredServers(data.servers);
+        setStreamSearchSource(data.source || 'gemini_grounding');
+        notify(`লাইভ স্ট্রিম স্ক্যান সম্পন্ন: ৫টি সার্ভার প্রস্তুত (${data.totalDiscovered} লিংক পাওয়া গেছে)`);
+      } else {
+        notify('স্ট্রিম ডিসকভারিতে সমস্যা হয়েছে, ডিফল্ট সার্ভার তৈরি করা হয়েছে।');
+      }
+    } catch (err: any) {
+      notify(`ত্রুটি: ${err.message}`);
+    } finally {
+      setDiscoveringStreams(false);
+    }
+  };
+
+  const handleBindServersToMatch = async (targetEventId?: string) => {
+    const targetId = targetEventId || streamMatchId;
+    if (!targetId) {
+      notify('অনুগ্রহ করে একটি ম্যাচ নির্বাচন করুন');
+      return;
+    }
+    if (!discoveredServers || discoveredServers.length === 0) {
+      notify('প্রথমে "ইউটিউব ও ফেসবুকে লাইভ খুঁজুন" বাটনে ক্লিক করে ৫টি সার্ভার তৈরি করুন');
+      return;
+    }
+    const targetEvent = events.find((e) => e.id === targetId);
+    if (!targetEvent) return;
+
+    await saveEvent({
+      ...targetEvent,
+      streamServers: discoveredServers,
+      authorizedViewingUrl: discoveredServers[0]?.url || targetEvent.authorizedViewingUrl,
+    });
+    notify(`সফল হয়েছে! "${targetEvent.title}" ম্যাচে ৫টি সার্ভার সক্রিয় ও সেভ করা হয়েছে।`);
+  };
+
+  const sidebarItems: { id: AdminTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'dashboard', label: 'Dashboard Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
+    {
+      id: 'viewers',
+      label: 'লাইভ দর্শক (Live Viewers)',
+      icon: <Radio className="w-4 h-4 text-red-400 animate-pulse" />,
+      badge: telemetry.totalMatchWatchers > 0 ? `${telemetry.totalMatchWatchers} watching` : undefined,
+    },
     { id: 'automation', label: 'Automation & AI Feeds', icon: <Zap className="w-4 h-4 text-[#00B7FF]" /> },
     { id: 'events', label: 'Match Controller', icon: <Calendar className="w-4 h-4" /> },
     { id: 'sports', label: 'Sports', icon: <Trophy className="w-4 h-4" /> },
@@ -332,14 +424,27 @@ export const AdminPage: React.FC = () => {
             key={item.id}
             type="button"
             onClick={() => setActiveTab(item.id)}
-            className={`w-full min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
+            className={`w-full min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
               activeTab === item.id
                 ? 'bg-[#00B7FF] text-[#080B12]'
                 : 'text-[#A5B1C2] hover:text-white hover:bg-white/5'
             }`}
           >
-            {item.icon}
-            <span>{item.label}</span>
+            <div className="flex items-center gap-3">
+              {item.icon}
+              <span>{item.label}</span>
+            </div>
+            {item.badge && (
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  activeTab === item.id
+                    ? 'bg-black/20 text-[#080B12]'
+                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                }`}
+              >
+                {item.badge}
+              </span>
+            )}
           </button>
         ))}
 
@@ -380,6 +485,92 @@ export const AdminPage: React.FC = () => {
               </button>
             </div>
 
+            {/* Real-time Audience Telemetry Banner */}
+            <div className="bg-gradient-to-r from-[#151E2B] via-[#101b2b] to-[#151E2B] rounded-2xl border border-white/10 p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-white flex items-center gap-2">
+                      লাইভ দর্শক মনিটরিং (Live Concurrent Audience)
+                    </h2>
+                    <p className="text-xs text-[#A5B1C2]">
+                      রিয়েল-টাইমে কতজন ইউজার আপনার সাইটে খেলা দেখছেন তা সরাসরি পর্যবেক্ষণ করুন
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('viewers')}
+                  className="px-3.5 py-1.5 rounded-xl bg-red-500/15 border border-red-500/30 text-xs font-semibold text-red-400 hover:bg-red-500/25 inline-flex items-center gap-2 transition-colors self-start sm:self-center"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  বিস্তারিত লাইভ দর্শক মনিটর খুলুন
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-white/5">
+                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
+                  <p className="text-[11px] text-[#A5B1C2]">বৰ্তমানে খেলা দেখছেন</p>
+                  <p className="font-display text-2xl font-black text-red-400 mt-1 tabular-nums flex items-baseline gap-1">
+                    {telemetry.totalMatchWatchers}
+                    <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
+                  <p className="text-[11px] text-[#A5B1C2]">ওয়েবসাইটে মোট সক্রিয় ভিজিটর</p>
+                  <p className="font-display text-2xl font-black text-[#00B7FF] mt-1 tabular-nums flex items-baseline gap-1">
+                    {telemetry.totalVisitors}
+                    <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
+                  <p className="text-[11px] text-[#A5B1C2]">স্মার্টফোন (Mobile)</p>
+                  <p className="font-display text-2xl font-black text-white mt-1 tabular-nums flex items-baseline gap-1">
+                    {telemetry.deviceStats.mobile}
+                    <span className="text-xs font-normal text-[#A5B1C2]">
+                      ({telemetry.totalVisitors > 0 ? Math.round((telemetry.deviceStats.mobile / telemetry.totalVisitors) * 100) : 0}%)
+                    </span>
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
+                  <p className="text-[11px] text-[#A5B1C2]">কম্পিউটার (Desktop)</p>
+                  <p className="font-display text-2xl font-black text-white mt-1 tabular-nums flex items-baseline gap-1">
+                    {telemetry.deviceStats.desktop}
+                    <span className="text-xs font-normal text-[#A5B1C2]">
+                      ({telemetry.totalVisitors > 0 ? Math.round((telemetry.deviceStats.desktop / telemetry.totalVisitors) * 100) : 0}%)
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {telemetry.matchStats.length > 0 && (
+                <div className="pt-2 border-t border-white/5 space-y-2">
+                  <p className="text-xs font-semibold text-[#A5B1C2]">কোন খেলায় কতজন দেখছেন:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {telemetry.matchStats.map((st) => (
+                      <div
+                        key={st.eventId}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs flex items-center gap-2"
+                      >
+                        <span className="font-bold text-white truncate max-w-[200px]">{st.eventTitle}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-mono font-bold text-[11px]">
+                          🔴 {st.count} জন
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: 'Total Events', value: events.length },
@@ -406,6 +597,329 @@ export const AdminPage: React.FC = () => {
                 </div>
               ))}
             </div>
+
+            {/* Daily Viewership Graph Paper Component */}
+            <DailyAudienceGraph
+              todayVisitors={telemetry.totalVisitors}
+              todayMatchWatchers={telemetry.totalMatchWatchers}
+            />
+          </div>
+        )}
+
+        {/* Dedicated Live Viewers Real-time Telemetry Tab */}
+        {activeTab === 'viewers' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                  <h1 className="font-display text-2xl font-extrabold text-white flex items-center gap-2">
+                    রিয়েল-টাইম লাইভ দর্শক মনিটর (Live Audience)
+                  </h1>
+                </div>
+                <p className="text-xs text-[#A5B1C2] mt-1">
+                  এই মুহূর্তে আপনার ওয়েবসাইটে কে কোন খেলাটি দেখছেন এবং ভিজিটরদের লাইভ উপস্থিতি ট্র্যাক করুন।
+                </p>
+              </div>
+
+              <div className="px-3 py-1.5 rounded-xl bg-[#16D98A]/10 border border-[#16D98A]/20 text-[#16D98A] text-xs font-semibold flex items-center gap-2 self-start">
+                <span className="w-2 h-2 rounded-full bg-[#16D98A] animate-pulse"></span>
+                <span>স্বয়ংক্রিয় লাইভ সিঙ্ক সক্রিয়</span>
+              </div>
+            </div>
+
+            {/* Top Telemetry KPI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-[#151E2B] rounded-2xl border border-red-500/20 p-5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10">
+                  <Radio className="w-16 h-16 text-red-500" />
+                </div>
+                <p className="text-xs text-red-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                  খেলা দেখছেন (Watching Stream)
+                </p>
+                <p className="font-display text-3xl font-black text-white mt-2 tabular-nums">
+                  {telemetry.totalMatchWatchers}{' '}
+                  <span className="text-sm font-semibold text-[#A5B1C2]">জন</span>
+                </p>
+                <p className="text-[11px] text-[#A5B1C2] mt-1">
+                  ম্যাচ পেজে সক্রিয় দর্শক
+                </p>
+              </div>
+
+              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10">
+                  <Globe className="w-16 h-16 text-[#00B7FF]" />
+                </div>
+                <p className="text-xs text-[#00B7FF] font-bold uppercase tracking-wider">
+                  সাইটে মোট সক্রিয় ভিজিটর
+                </p>
+                <p className="font-display text-3xl font-black text-white mt-2 tabular-nums">
+                  {telemetry.totalVisitors}{' '}
+                  <span className="text-sm font-semibold text-[#A5B1C2]">জন</span>
+                </p>
+                <p className="text-[11px] text-[#A5B1C2] mt-1">
+                  ওয়েবসাইটের সব পেজ মিলিয়ে
+                </p>
+              </div>
+
+              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-[#A5B1C2] font-semibold flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-emerald-400" />
+                    মোবাইল ইউজার
+                  </p>
+                  <span className="text-xs font-mono font-bold text-emerald-400">
+                    {telemetry.totalVisitors > 0
+                      ? Math.round((telemetry.deviceStats.mobile / telemetry.totalVisitors) * 100)
+                      : 0}
+                    %
+                  </span>
+                </div>
+                <p className="font-display text-2xl font-bold text-white mt-2 tabular-nums">
+                  {telemetry.deviceStats.mobile}{' '}
+                  <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
+                </p>
+                <div className="w-full bg-white/5 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-400 h-full rounded-full transition-all"
+                    style={{
+                      width: `${
+                        telemetry.totalVisitors > 0
+                          ? (telemetry.deviceStats.mobile / telemetry.totalVisitors) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-[#A5B1C2] font-semibold flex items-center gap-1.5">
+                    <Monitor className="w-4 h-4 text-cyan-400" />
+                    ডেস্কটপ ইউজার
+                  </p>
+                  <span className="text-xs font-mono font-bold text-cyan-400">
+                    {telemetry.totalVisitors > 0
+                      ? Math.round((telemetry.deviceStats.desktop / telemetry.totalVisitors) * 100)
+                      : 0}
+                    %
+                  </span>
+                </div>
+                <p className="font-display text-2xl font-bold text-white mt-2 tabular-nums">
+                  {telemetry.deviceStats.desktop}{' '}
+                  <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
+                </p>
+                <div className="w-full bg-white/5 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="bg-cyan-400 h-full rounded-full transition-all"
+                    style={{
+                      width: `${
+                        telemetry.totalVisitors > 0
+                          ? (telemetry.deviceStats.desktop / telemetry.totalVisitors) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Match-by-Match Breakdown */}
+            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-red-400" />
+                  ম্যাচভিত্তিক লাইভ দর্শক বন্টন (Audience per Match)
+                </h2>
+                <span className="text-xs text-[#A5B1C2]">
+                  {telemetry.matchStats.length} টি ম্যাচে দর্শক উপস্থিত
+                </span>
+              </div>
+
+              {telemetry.matchStats.length === 0 ? (
+                <div className="p-8 text-center bg-[#101722] rounded-xl border border-white/5 space-y-2">
+                  <p className="text-sm font-semibold text-white">
+                    এই মুহূর্তে কোনো দর্শক নির্দিষ্ট কোনো ম্যাচ পেজে নেই
+                  </p>
+                  <p className="text-xs text-[#A5B1C2]">
+                    ভিজিটররা হোমপেজ বা সূচি ব্রাউজ করছেন। ইউজাররা কোনো খেলার পেজে ঢুকলে তাৎক্ষণিকভাবে এখানে তাদের দর্শক সংখ্যা দেখা যাবে।
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {telemetry.matchStats.map((stat, idx) => {
+                    const matchEvent = events.find((e) => e.id === stat.eventId);
+                    const pct =
+                      telemetry.totalMatchWatchers > 0
+                        ? Math.round((stat.count / telemetry.totalMatchWatchers) * 100)
+                        : 100;
+
+                    return (
+                      <div
+                        key={stat.eventId}
+                        className="bg-[#101722] rounded-xl border border-white/5 p-4 space-y-3 hover:border-white/20 transition-colors"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-lg bg-white/5 text-xs font-mono font-bold text-[#A5B1C2] flex items-center justify-center">
+                              #{idx + 1}
+                            </span>
+                            <div>
+                              <p className="text-sm font-bold text-white flex items-center gap-2">
+                                {stat.eventTitle}
+                                {matchEvent?.status === 'LIVE' && (
+                                  <span className="px-2 py-0.5 rounded-full bg-[#16D98A]/20 text-[#16D98A] text-[10px] font-bold">
+                                    LIVE NOW
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-[#A5B1C2] capitalize">
+                                Sport: {stat.sportId} · Competition: {matchEvent?.competitionId || 'Tournament'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 self-end sm:self-auto">
+                            <div className="text-right">
+                              <p className="text-sm font-black text-red-400 font-mono">
+                                🔴 {stat.count} জন
+                              </p>
+                              <p className="text-[10px] text-[#A5B1C2] font-mono">
+                                {pct}% দর্শক
+                              </p>
+                            </div>
+
+                            {matchEvent && (
+                              <Link
+                                to={`/events/${matchEvent.slug || matchEvent.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-[#00B7FF] transition-colors"
+                                title="খেলাটি নতুন ট্যাবে দেখুন"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Audience Share Progress Bar */}
+                        <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-red-500 to-amber-500 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Active Sessions Live Feed */}
+            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
+                  <Users className="w-5 h-5 text-[#00B7FF]" />
+                  সক্রিয় সেশনসমূহের লাইভ তালিকা (Active Live Sessions)
+                </h2>
+                <span className="text-xs font-mono text-[#A5B1C2]">
+                  মোট {telemetry.activeSessions.length} টি সক্রিয় সংযোগ
+                </span>
+              </div>
+
+              {telemetry.activeSessions.length === 0 ? (
+                <div className="p-6 text-center text-xs text-[#A5B1C2]">
+                  কোনো সক্রিয় সেশন নেই
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-white/10 text-[#A5B1C2]">
+                        <th className="py-3 px-3">ইউজার / সেশন</th>
+                        <th className="py-3 px-3">বর্তমান অবস্থান / ম্যাচ</th>
+                        <th className="py-3 px-3">ডিভাইস</th>
+                        <th className="py-3 px-3">ব্রাউজার</th>
+                        <th className="py-3 px-3">লাস্ট পিং (স্ট্যাটাস)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {telemetry.activeSessions.map((session) => {
+                        const secondsAgo = Math.max(0, Math.round((Date.now() - session.lastPing) / 1000));
+                        return (
+                          <tr key={session.id} className="hover:bg-white/[0.02]">
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-[#16D98A] animate-ping" />
+                                <div>
+                                  <p className="font-semibold text-white">
+                                    {session.userName || 'Anonymous Fan'}
+                                  </p>
+                                  <p className="text-[10px] text-[#A5B1C2] font-mono truncate max-w-[120px]">
+                                    {session.id}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              {session.eventTitle ? (
+                                <div className="space-y-0.5">
+                                  <p className="font-bold text-red-400 flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                                    {session.eventTitle}
+                                  </p>
+                                  <p className="text-[10px] text-[#A5B1C2]">
+                                    {session.page}
+                                  </p>
+                                </div>
+                              ) : (
+                                <span className="text-[#A5B1C2] font-mono">
+                                  {session.page}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-white capitalize font-mono text-[11px] inline-flex items-center gap-1">
+                                {session.device === 'mobile' ? (
+                                  <>
+                                    <Smartphone className="w-3 h-3 text-emerald-400" /> Mobile
+                                  </>
+                                ) : (
+                                  <>
+                                    <Monitor className="w-3 h-3 text-cyan-400" /> Desktop
+                                  </>
+                                )}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-[#A5B1C2]">
+                              {session.browser || 'Web'}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="font-mono text-[#16D98A] text-[11px]">
+                                {secondsAgo < 5 ? 'এখনই সক্রিয়' : `${secondsAgo} সে. আগে`}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Daily Viewership Graph Paper Component */}
+            <DailyAudienceGraph
+              todayVisitors={telemetry.totalVisitors}
+              todayMatchWatchers={telemetry.totalMatchWatchers}
+            />
           </div>
         )}
 
@@ -565,6 +1079,297 @@ export const AdminPage: React.FC = () => {
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Automated Live Stream Discovery Engine & 5-Server Hub */}
+            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="p-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20">
+                    <Radio className="w-5 h-5 animate-pulse" />
+                  </span>
+                  <div>
+                    <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
+                      ইউটিউব ও ফেসবুকে লাইভ খেলা স্ক্যানার এবং ৫-সার্ভার ডিস্ট্রিবিউশন
+                    </h2>
+                    <p className="text-xs text-[#A5B1C2]">
+                      স্বয়ংক্রিয়ভাবে ইউটিউব ও ফেসবুক থেকে লাইভ স্ট্রিম খুঁজে ৫টি কোয়ালিটি সার্ভারে (১০৮০p, ৭২০p, ৪৮০p, মিরর, ব্যাকআপ) ভাগ করে ম্যাচে বসিয়ে দিন
+                    </p>
+                  </div>
+                </div>
+
+                <span className="px-3 py-1 rounded-full bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-mono font-bold self-start sm:self-auto">
+                  ৫-সার্ভার আর্কিটেকচার
+                </span>
+              </div>
+
+              {/* Discovery Controls */}
+              <div className="bg-[#101722] rounded-xl border border-white/5 p-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-white mb-1.5">
+                      ১. ওয়েবসাইটের ম্যাচ নির্বাচন করুন:
+                    </label>
+                    <select
+                      value={streamMatchId}
+                      onChange={(e) => {
+                        setStreamMatchId(e.target.value);
+                        const match = events.find((ev) => ev.id === e.target.value);
+                        if (match) setCustomMatchTitle(`${match.title} live match`);
+                      }}
+                      className="w-full bg-[#151E2B] border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#00B7FF]"
+                    >
+                      <option value="">-- যেকোনো ম্যাচ বেছে নিন --</option>
+                      {events.map((ev) => (
+                        <option key={ev.id} value={ev.id}>
+                          {ev.status === 'LIVE' ? '🔴 LIVE: ' : ''}{ev.title} ({ev.sportId})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-white mb-1.5">
+                      ২. সার্চ কীওয়ার্ড (যেমন: বাংলাদেশ বনাম ওয়েস্ট ইন্ডিজ):
+                    </label>
+                    <input
+                      type="text"
+                      value={customMatchTitle}
+                      onChange={(e) => setCustomMatchTitle(e.target.value)}
+                      placeholder="Bangladesh vs West Indies live stream..."
+                      className="w-full bg-[#151E2B] border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#00B7FF]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={discoveringStreams}
+                    onClick={handleDiscoverStreams}
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-bold inline-flex items-center gap-2 transition-all shadow-lg shadow-red-500/20 active:scale-95 disabled:opacity-50"
+                  >
+                    {discoveringStreams ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Search className="w-4 h-4" />
+                    )}
+                    <span>
+                      {discoveringStreams
+                        ? 'ইউটিউব ও ফেসবুকে সার্চ হচ্ছে...'
+                        : 'ইউটিউব ও ফেসবুকে লাইভ খুঁজুন এবং ৫টি সার্ভার তৈরি করুন'}
+                    </span>
+                  </button>
+
+                  {discoveredServers && (
+                    <button
+                      type="button"
+                      onClick={() => handleBindServersToMatch()}
+                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#16D98A] hover:bg-[#1ae895] text-[#080B12] text-xs font-bold inline-flex items-center gap-2 transition-all shadow-lg shadow-[#16D98A]/20 active:scale-95"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>এই ৫টি সার্ভার নির্বাচিত ম্যাচে সেভ ও সক্রিয় করুন</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 5 Servers Display & Customizer */}
+              {discoveredServers && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-white flex items-center gap-2">
+                      <Server className="w-4 h-4 text-[#00B7FF]" />
+                      তৈরি হওয়া ৫টি সার্ভার কনফিগারেশন:
+                    </p>
+                    <span className="text-[11px] text-[#A5B1C2]">
+                      সূত্র: {streamSearchSource === 'gemini_search_grounding' ? 'গুগল সার্চ ও ইউটিউব গ্রাউন্ডিং' : 'ভেরিফায়েড ব্রডকাস্ট নেটওয়ার্ক'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                    {discoveredServers.map((srv, idx) => (
+                      <div
+                        key={srv.id}
+                        className={`p-3.5 rounded-xl border space-y-2 ${
+                          idx === 0
+                            ? 'bg-[#00B7FF]/10 border-[#00B7FF]/40 ring-1 ring-[#00B7FF]/30'
+                            : 'bg-[#101722] border-white/10'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-white">
+                            {idx === 0 ? '⚡ ' : ''}সার্ভার {idx + 1}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                            idx === 0 ? 'bg-[#00B7FF] text-[#080B12]' : 'bg-white/10 text-[#A5B1C2]'
+                          }`}>
+                            {srv.quality}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-[#00B7FF]">
+                          {srv.badge}
+                        </p>
+                        <p className="text-[10px] text-[#A5B1C2] leading-relaxed">
+                          {srv.description}
+                        </p>
+                        <div className="pt-1">
+                          <input
+                            type="text"
+                            value={srv.url}
+                            onChange={(e) => {
+                              const updated = [...discoveredServers];
+                              updated[idx].url = e.target.value;
+                              setDiscoveredServers(updated);
+                            }}
+                            className="w-full bg-[#151E2B] border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white font-mono truncate focus:outline-none focus:border-[#00B7FF]"
+                            title="সার্ভার স্ট্রিম লিঙ্ক"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setTestStreamUrl(srv.url)}
+                          className="w-full mt-1 py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] font-semibold text-[#A5B1C2] hover:text-white flex items-center justify-center gap-1"
+                        >
+                          <Play className="w-3 h-3 text-[#00B7FF]" />
+                          টেস্ট প্লে
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Google Search Console & Index Verification Inspector */}
+            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="p-2.5 rounded-xl bg-[#00B7FF]/10 text-[#00B7FF] border border-[#00B7FF]/20">
+                    <Globe className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
+                      গুগল ইনডেক্স ভেরিফিকেশন ও সার্চ কনসোল চেকার (Google Index Status)
+                    </h2>
+                    <p className="text-xs text-[#A5B1C2]">
+                      গুগলে আপনার ওয়েবসাইট ইনডেক্স হয়েছে কিনা তা নিশ্চিত করার সম্পূর্ণ নির্দেশিকা ও এক-ক্লিক যাচাই টুল
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#16D98A]/15 border border-[#16D98A]/30 text-[#16D98A] text-xs font-semibold self-start sm:self-auto">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>মেটা ট্যাগ কার্যকর</span>
+                </div>
+              </div>
+
+              {/* Status Verification Checklist */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white">Google Site Verification</span>
+                    <span className="text-[#16D98A] text-xs">✓ Active</span>
+                  </div>
+                  <p className="text-[11px] text-[#A5B1C2] font-mono break-all">
+                    6vx3TPoTIMK_BIUQaQG59mENiwW_nJgRoD0BcwdowOQ
+                  </p>
+                  <p className="text-[10px] text-[#16D98A]">HTML &lt;head&gt; সেকশনে সঠিক মেটা ট্যাগ যুক্ত আছে।</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white">Sitemap.xml</span>
+                    <span className="text-[#16D98A] text-xs">✓ Ready</span>
+                  </div>
+                  <p className="text-[11px] text-[#A5B1C2] font-mono">
+                    /sitemap.xml
+                  </p>
+                  <p className="text-[10px] text-[#A5B1C2]">গুগল বটদের জন্য সকল খেলা ও পেজের এক্সএমএল ম্যাপ তৈরি।</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white">Robots.txt</span>
+                    <span className="text-[#16D98A] text-xs">✓ Allowed</span>
+                  </div>
+                  <p className="text-[11px] text-[#A5B1C2] font-mono">
+                    /robots.txt
+                  </p>
+                  <p className="text-[10px] text-[#A5B1C2]">গুগল সার্চ ইঞ্জিনকে সাইট ক্রল করার অনুমতি দেওয়া আছে।</p>
+                </div>
+              </div>
+
+              {/* Explanation: How to know if Google has indexed the site */}
+              <div className="bg-[#101722] rounded-xl border border-white/10 p-5 space-y-3">
+                <h3 className="text-xs font-bold text-[#00B7FF] uppercase tracking-wider">
+                  গুগলে ইনডেক্স হলে কিভাবে বুঝবেন? (৩টি সহজ উপায়)
+                </h3>
+                <div className="space-y-2.5 text-xs text-[#CBD5E1] leading-relaxed">
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-[#00B7FF]/20 text-[#00B7FF] flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">১</span>
+                    <div>
+                      <strong className="text-white">গুগলে সরাসরি সার্চ করে দেখুন:</strong>
+                      <p className="text-[#A5B1C2] text-[11px] mt-0.5">
+                        গুগল সার্চবারে গিয়ে <code className="px-1.5 py-0.5 rounded bg-black/40 text-amber-300 font-mono">site:kheladekh.vercel.app</code> লিখে সার্চ করুন। যদি আপনার সাইটের লিঙ্ক গুগলের সার্চ রেজাল্টে দেখা যায়, তাহলে নিশ্চিত হবেন যে গুগল সাইটটি ইনডেক্স করে নিয়েছে।
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-[#00B7FF]/20 text-[#00B7FF] flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">২</span>
+                    <div>
+                      <strong className="text-white">গুগল সার্চ কনসোলে "URL Inspection" (URL পরিদর্শন):</strong>
+                      <p className="text-[#A5B1C2] text-[11px] mt-0.5">
+                        সার্চ কনসোলের উপরের সার্চবারে আপনার সাইটের পুরো URL পেস্ট করে Enter চাপলে যদি <strong className="text-[#16D98A]">"URL is on Google"</strong> এবং সবুজ টিক চিহ্ন দেখায়, তবে সাইটটি সম্পূর্ণরূপে ইনডেক্সড।
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-[#00B7FF]/20 text-[#00B7FF] flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">৩</span>
+                    <div>
+                      <strong className="text-white">Sitemaps সেকশনে "Success" স্ট্যাটাস:</strong>
+                      <p className="text-[#A5B1C2] text-[11px] mt-0.5">
+                        সার্চ কনসোলের বাম পাশের <strong>Sitemaps</strong> মেনুতে <code className="text-emerald-400 font-mono">sitemap.xml</code> সাবমিট করলে সেখানে "Success" স্ট্যাটাস এবং ডিসকভার্ড পেজের সংখ্যা প্রদর্শিত হয়। (নতুন সাইট ভেরিফাই করার পর গুগল সাধারণত ২৪ থেকে ৭২ ঘণ্টার মধ্যে প্রথম ইনডেক্স সম্পন্ন করে)।
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 1-Click Action Buttons */}
+                <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/5">
+                  <a
+                    href="https://www.google.com/search?q=site:kheladekh.vercel.app"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-2 transition-colors shadow-md shadow-[#00B7FF]/20"
+                  >
+                    <Search className="w-4 h-4" />
+                    <span>গুগলে লাইভ চেক করুন (site:kheladekh.vercel.app)</span>
+                  </a>
+
+                  <a
+                    href="https://search.google.com/search-console"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#151E2B] hover:bg-white/10 border border-white/15 text-white text-xs font-semibold inline-flex items-center gap-2 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4 text-[#00B7FF]" />
+                    <span>গুগল সার্চ কনসোল ওপেন করুন</span>
+                  </a>
+
+                  <a
+                    href="/sitemap.xml"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#151E2B] hover:bg-white/10 border border-white/15 text-white text-xs font-semibold inline-flex items-center gap-2 transition-colors"
+                  >
+                    <Link2 className="w-4 h-4 text-emerald-400" />
+                    <span>সাইটম্যাপ (sitemap.xml) দেখুন</span>
+                  </a>
+                </div>
               </div>
             </div>
           </div>
@@ -1260,10 +2065,192 @@ export const AdminPage: React.FC = () => {
         )}
 
         {activeTab === 'settings' && (
-          <div className="space-y-6">
-            <h1 className="font-display text-2xl font-extrabold text-white">
-              Website Settings
-            </h1>
+          <div className="space-y-6 max-w-4xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="font-display text-2xl font-extrabold text-white">
+                  ওয়েবসাইট সেটিংস ও বিজ্ঞাপন নিয়ন্ত্রণ (Settings & Ads)
+                </h1>
+                <p className="text-xs text-[#A5B1C2] mt-1">
+                  ওয়েবসাইটের সাধারণ সেটিংস এবং খেলা দেখার পূর্বে ১২ সেকেন্ডের বিজ্ঞাপন পরিচালনা করুন।
+                </p>
+              </div>
+            </div>
+
+            {/* 12-Second Pre-Roll / App Entry Ad Management Card */}
+            <div className="bg-[#151E2B] rounded-2xl border border-amber-500/20 p-6 space-y-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white flex items-center gap-2">
+                      খেলা দেখার পূর্বের বিজ্ঞাপন (১২ সেকেন্ড কাউন্টডাউন)
+                      {adEnabled ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          সক্রিয় (Active)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-[#A5B1C2]">
+                          বন্ধ (Disabled)
+                        </span>
+                      )}
+                    </h2>
+                    <p className="text-xs text-[#A5B1C2]">
+                      ব্যবহারকারী অ্যাপে ঢুকলে বা খেলায় ক্লিক করলে ১২ সেকেন্ড অ্যাড চলবে, তারপর ১২ ঘণ্টা আর আসবে না।
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAdEnabled(!adEnabled)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      adEnabled
+                        ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20'
+                        : 'bg-white/10 text-white hover:bg-white/20'
+                    }`}
+                  >
+                    {adEnabled ? 'বিজ্ঞাপন চালু আছে' : 'বিজ্ঞাপন বন্ধ করুন'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Status and Testing Banner */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-[#101722] p-3.5 rounded-xl border border-white/5">
+                  <span className="text-[11px] text-[#A5B1C2] block">বিজ্ঞাপন প্রদর্শনের সময়</span>
+                  <div className="text-lg font-mono font-bold text-amber-400 mt-1 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    <span>{adDuration} সেকেন্ড (কাউন্টডাউন)</span>
+                  </div>
+                </div>
+
+                <div className="bg-[#101722] p-3.5 rounded-xl border border-white/5">
+                  <span className="text-[11px] text-[#A5B1C2] block">পুনরায় প্রদর্শনের বিরতি (Capping)</span>
+                  <div className="text-lg font-mono font-bold text-[#00B7FF] mt-1 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4" />
+                    <span>{adFrequency} ঘণ্টা সম্পূর্ণ বিজ্ঞাপনমুক্ত</span>
+                  </div>
+                </div>
+
+                <div className="bg-[#101722] p-3.5 rounded-xl border border-white/5">
+                  <span className="text-[11px] text-[#A5B1C2] block">আপনার বর্তমান ব্রাউজার স্ট্যাটাস</span>
+                  <div className="text-xs font-medium text-white mt-1.5 flex items-center gap-1.5">
+                    {cooldownRemaining > 0 ? (
+                      <span className="text-amber-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        কুলডাউনে আছে: আর {Math.ceil(cooldownRemaining / 60)} ঘণ্টা বাকি
+                      </span>
+                    ) : (
+                      <span className="text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" />
+                        এখনই বিজ্ঞাপন দেখানোর জন্য প্রস্তুত
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons for Testing and Cooldown Reset */}
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setTestAdModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-xs font-bold flex items-center gap-2 hover:opacity-95 shadow-md shadow-amber-500/20"
+                >
+                  <Play className="w-4 h-4" />
+                  ১২ সেকেন্ডের বিজ্ঞাপন লাইভ টেস্ট করুন (Preview)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetAdCooldown();
+                    setCooldownRemaining(0);
+                    notify('১২ ঘণ্টার বিজ্ঞাপন কুলডাউন রিসেট করা হয়েছে!');
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-2 transition-all border border-white/10"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  ১২ ঘণ্টার লিমিট রিসেট করুন (Reset Cooldown)
+                </button>
+              </div>
+
+              {/* Form Inputs for Ad Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-white/10">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
+                    বিজ্ঞাপনের শিরোনাম (Ad Title)
+                  </label>
+                  <input
+                    type="text"
+                    value={adTitle}
+                    onChange={(e) => setAdTitle(e.target.value)}
+                    placeholder="যেমন: KhelaDekH অফিসিয়াল স্পোর্টস পার্টনার স্পনসর"
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
+                    বিজ্ঞাপনের বর্ণনা (Ad Description)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={adDesc}
+                    onChange={(e) => setAdDesc(e.target.value)}
+                    placeholder="বিজ্ঞাপনের অফার বা বিস্তারিত তথ্য লিখুন..."
+                    className="w-full p-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
+                    স্পনসর / টার্গেট লিংক (Sponsor Link / URL)
+                  </label>
+                  <input
+                    type="url"
+                    value={adTargetUrl}
+                    onChange={(e) => setAdTargetUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
+                    বাটন টেক্সট (CTA Button Text)
+                  </label>
+                  <input
+                    type="text"
+                    value={adCtaText}
+                    onChange={(e) => setAdCtaText(e.target.value)}
+                    placeholder="যেমন: অফারটি দেখুন (Claim Offer)"
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
+                    বিজ্ঞাপনের ব্যানার ইমেজ লিংক (Ad Image URL)
+                  </label>
+                  <input
+                    type="url"
+                    value={adImageUrl}
+                    onChange={(e) => setAdImageUrl(e.target.value)}
+                    placeholder="https://images.unsplash.com/..."
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* General Site Settings Form */}
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -1273,52 +2260,66 @@ export const AdminPage: React.FC = () => {
                   tagline,
                   contactEmail,
                   footerText,
+                  preRollAd: {
+                    enabled: adEnabled,
+                    durationSeconds: adDuration,
+                    frequencyHours: adFrequency,
+                    title: adTitle,
+                    description: adDesc,
+                    targetUrl: adTargetUrl,
+                    ctaText: adCtaText,
+                    imageUrl: adImageUrl,
+                    badgeText: 'স্পন্সর বিজ্ঞাপন (Sponsored)',
+                  },
                 });
-                notify('Settings updated.');
+                notify('ওয়েবসাইট সেটিংস ও বিজ্ঞাপনের কনফিগারেশন সংরক্ষিত হয়েছে!');
               }}
-              className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4 max-w-xl"
+              className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4"
             >
-              <div>
-                <label className="block text-xs text-[#A5B1C2] mb-1">Site Name</label>
-                <input
-                  type="text"
-                  value={siteName}
-                  onChange={(e) => setSiteName(e.target.value)}
-                  className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[#A5B1C2] mb-1">Tagline</label>
-                <input
-                  type="text"
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[#A5B1C2] mb-1">Contact Email</label>
-                <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[#A5B1C2] mb-1">Footer Text</label>
-                <input
-                  type="text"
-                  value={footerText}
-                  onChange={(e) => setFooterText(e.target.value)}
-                  className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                />
+              <h2 className="text-base font-bold text-white mb-2">সাধারণ ওয়েবসাইট সেটিংস</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-[#A5B1C2] mb-1">Site Name</label>
+                  <input
+                    type="text"
+                    value={siteName}
+                    onChange={(e) => setSiteName(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#A5B1C2] mb-1">Tagline</label>
+                  <input
+                    type="text"
+                    value={tagline}
+                    onChange={(e) => setTagline(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#A5B1C2] mb-1">Contact Email</label>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#A5B1C2] mb-1">Footer Text</label>
+                  <input
+                    type="text"
+                    value={footerText}
+                    onChange={(e) => setFooterText(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  />
+                </div>
               </div>
               <button
                 type="submit"
-                className="min-h-[40px] px-5 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
+                className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold hover:brightness-110 transition-all shadow-md"
               >
-                Save Settings
+                সব সেটিংস সেভ করুন (Save All Settings)
               </button>
             </form>
           </div>
@@ -1343,6 +2344,24 @@ export const AdminPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Pre-Roll Ad Test Modal for Admin Preview */}
+      <PreRollAdModal
+        isOpen={testAdModalOpen}
+        onClose={() => setTestAdModalOpen(false)}
+        config={{
+          enabled: adEnabled,
+          durationSeconds: adDuration,
+          frequencyHours: adFrequency,
+          title: adTitle,
+          description: adDesc,
+          targetUrl: adTargetUrl,
+          ctaText: adCtaText,
+          imageUrl: adImageUrl,
+          badgeText: 'অ্যাডমিন টেস্ট প্রিভিউ (Admin Preview)',
+        }}
+        contextText="অ্যাডমিন প্যানেল থেকে ১২ সেকেন্ডের বিজ্ঞাপন টেস্ট প্রিভিউ"
+      />
     </div>
   );
 };

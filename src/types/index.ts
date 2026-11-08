@@ -27,6 +27,15 @@ export interface Competition {
   season?: string;
 }
 
+export interface StreamServer {
+  id: string;
+  name: string;
+  quality: string;
+  url: string;
+  badge?: string;
+  description?: string;
+}
+
 export interface SportEvent {
   id: string;
   title: string;
@@ -42,10 +51,20 @@ export interface SportEvent {
   published: boolean;
   featured?: boolean;
   authorizedViewingUrl?: string;
+  streamServers?: StreamServer[];
   thumbnailUrl?: string;
   scoreSummary?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface DailyAnalytics {
+  date: string;
+  visitors: number;
+  matchViewers: number;
+  mobileCount: number;
+  desktopCount: number;
+  avgWatchMinutes: number;
 }
 
 export interface NewsArticle {
@@ -110,6 +129,18 @@ export interface ContactMessage {
   createdAt: string;
 }
 
+export interface PreRollAdConfig {
+  enabled: boolean;
+  durationSeconds: number; // default 12
+  frequencyHours: number; // default 12
+  title: string;
+  description: string;
+  badgeText: string;
+  imageUrl?: string;
+  targetUrl: string;
+  ctaText: string;
+}
+
 export interface SiteSettings {
   siteName: string;
   tagline: string;
@@ -117,6 +148,7 @@ export interface SiteSettings {
   footerText: string;
   privacyPolicy: string;
   termsOfService: string;
+  preRollAd?: PreRollAdConfig;
 }
 
 export interface AuditLog {
@@ -138,4 +170,17 @@ export interface MatchChatMessage {
   text: string;
   teamSupport?: string;
   createdAt: string;
+}
+
+export interface ActiveSession {
+  id: string;
+  page: string;
+  eventId?: string | null;
+  eventTitle?: string | null;
+  sportId?: string | null;
+  device: 'mobile' | 'desktop' | 'tablet';
+  browser?: string;
+  lastPing: number;
+  userId?: string | null;
+  userName?: string;
 }

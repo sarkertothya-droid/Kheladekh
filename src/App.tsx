@@ -1,8 +1,11 @@
-import React from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import { DataProvider } from './context/DataContext';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DataProvider, useData } from './context/DataContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { useViewerPresence } from './services/presenceService';
+import { shouldDisplayAd } from './services/adService';
+import { PreRollAdModal } from './components/PreRollAdModal';
 import { Navbar } from './components/Navbar';
 import { NotificationPermissionBanner } from './components/NotificationPermissionBanner';
 import { Footer } from './components/Footer';
@@ -21,12 +24,63 @@ import { ContactPage } from './pages/ContactPage';
 import { LegalPage } from './pages/LegalPage';
 import { AdminPage } from './pages/AdminPage';
 
+function GlobalPresenceTracker() {
+  const location = useLocation();
+  const { user, profile } = useAuth();
+
+  // If viewing an event page, EventDetailsPage handles specific match presence
+  const isEventPage = location.pathname.startsWith('/events/');
+
+  useViewerPresence({
+    page: location.pathname,
+    eventId: null,
+    eventTitle: null,
+    sportId: null,
+    userId: user?.uid || null,
+    userName: profile?.displayName || user?.displayName || 'Fan',
+    enabled: !isEventPage,
+  });
+
+  return null;
+}
+
+function AppEntryAd() {
+  const { settings } = useData();
+  const [showAd, setShowAd] = useState(false);
+
+  useEffect(() => {
+    const adConfig = settings?.preRollAd;
+    if (adConfig && adConfig.enabled === false) return;
+
+    const freq = adConfig?.frequencyHours || 12;
+    if (shouldDisplayAd(freq)) {
+      const timer = setTimeout(() => {
+        setShowAd(true);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [settings?.preRollAd]);
+
+  if (!showAd) return null;
+
+  return (
+    <PreRollAdModal
+      config={settings?.preRollAd}
+      isOpen={showAd}
+      onClose={() => setShowAd(false)}
+      contextText="ওয়েবসাইটে প্রবেশের সংক্ষিপ্ত ১২ সেকেন্ড বিজ্ঞাপন (পরবর্তী ১২ ঘণ্টা বিজ্ঞাপনমুক্ত)"
+    />
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <DataProvider>
           <NotificationProvider>
+            <GlobalPresenceTracker />
+            <AppEntryAd />
             <div className="min-h-screen flex flex-col bg-[#080B12] text-white">
               <Navbar />
               <NotificationPermissionBanner />

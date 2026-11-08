@@ -187,6 +187,24 @@
         "votedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "eventId", "prediction"]
+    },
+    "ActiveSession": {
+      "title": "ActiveSession",
+      "description": "Real-time viewer session heartbeat and match viewership presence",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "page": { "type": "string", "maxLength": 200 },
+        "eventId": { "type": "string", "maxLength": 128 },
+        "eventTitle": { "type": "string", "maxLength": 200 },
+        "sportId": { "type": "string", "maxLength": 80 },
+        "device": { "type": "string", "maxLength": 40 },
+        "browser": { "type": "string", "maxLength": 60 },
+        "lastPing": { "type": "number" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "page", "lastPing", "device"]
     }
   },
   "firestore": {
@@ -217,6 +235,10 @@
     "/events/{eventId}/votes/{userId}": {
       "schema": { "$ref": "#/entities/MatchVote" },
       "description": "Fan match prediction votes"
+    },
+    "/activeSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/ActiveSession" },
+      "description": "Real-time active website viewers and live match viewers"
     },
     "/news/{articleId}": {
       "schema": { "$ref": "#/entities/NewsArticle" },

@@ -271,4 +271,15 @@ export const INITIAL_SETTINGS: SiteSettings = {
     'KhelaDekH respects your privacy. We collect only the account information you provide (such as your name, email address, and saved sports preferences) to personalize your experience. This sample policy must be reviewed by legal counsel before public launch.',
   termsOfService:
     'By accessing KhelaDekH, you agree to use the platform solely for lawful, personal, and non-commercial sports viewing and information. All official broadcast links belong to their respective rights holders. These sample terms must be reviewed by legal counsel before public launch.',
+  preRollAd: {
+    enabled: true,
+    durationSeconds: 12,
+    frequencyHours: 12,
+    title: 'KhelaDekH অফিসিয়াল স্পোর্টস পার্টনার স্পনসর',
+    description: 'এইচডি লাইভ ক্রিকেট, ফুটবল ম্যাচ ও মেগা স্পোর্টস ওয়েলকাম বোনাস! এখনই ভিজিট করে আপনার বিশেষ অফারটি লুফে নিন।',
+    badgeText: 'স্পন্সর বিজ্ঞাপন (Sponsored)',
+    imageUrl: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80',
+    targetUrl: 'https://kheladekh.vercel.app/sports',
+    ctaText: 'অফারটি দেখুন (Claim Offer)',
+  },
 };

@@ -56,6 +56,19 @@ service cloud.firestore {
         (!('teamSupport' in data) || (data.teamSupport is string && data.teamSupport.size() <= 100));
     }
 
+    function isValidActiveSession(data, sessionId) {
+      return data.id is string && data.id == sessionId &&
+        data.page is string && data.page.size() <= 200 &&
+        data.lastPing is number &&
+        data.device is string && data.device.size() <= 40 &&
+        (!('eventId' in data) || data.eventId == null || (data.eventId is string && data.eventId.size() <= 128)) &&
+        (!('eventTitle' in data) || data.eventTitle == null || (data.eventTitle is string && data.eventTitle.size() <= 200)) &&
+        (!('sportId' in data) || data.sportId == null || (data.sportId is string && data.sportId.size() <= 80)) &&
+        (!('browser' in data) || (data.browser is string && data.browser.size() <= 60)) &&
+        (!('userId' in data) || data.userId == null || (data.userId is string && data.userId.size() <= 128)) &&
+        (!('userName' in data) || (data.userName is string && data.userName.size() <= 100));
+    }
+
     // Users collection: PII isolated to owner or admin
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -104,6 +117,13 @@ service cloud.firestore {
         allow create, update: if isValidId(eventId) && isValidId(userId) && isOwner(userId);
         allow delete: if isValidId(eventId) && isValidId(userId) && (isOwner(userId) || isAdmin());
       }
+    }
+
+    // Active viewer sessions presence tracker (real-time concurrent watchers)
+    match /activeSessions/{sessionId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(sessionId) && isValidActiveSession(request.resource.data, sessionId);
+      allow delete: if isValidId(sessionId);
     }
 
     match /news/{articleId} {

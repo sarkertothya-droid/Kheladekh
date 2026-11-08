@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, Bell, BellOff, Calendar, Clock, MessageSquare, Activity, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Calendar, Clock, MessageSquare, Activity, BarChart3, Users, Eye } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { VideoPlayer } from '../components/VideoPlayer';
@@ -8,6 +8,9 @@ import { EventCard } from '../components/EventCard';
 import { LiveMatchChat } from '../components/LiveMatchChat';
 import { LiveMatchStats } from '../components/LiveMatchStats';
 import { LiveMatchPoll } from '../components/LiveMatchPoll';
+import { useViewerPresence, useMatchViewers } from '../services/presenceService';
+import { shouldDisplayAd } from '../services/adService';
+import { PreRollAdModal } from '../components/PreRollAdModal';
 
 export const EventDetailsPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -16,10 +19,32 @@ export const EventDetailsPage: React.FC = () => {
   const initialResolution = searchParams.get('res') || undefined;
   const [activeInteractiveTab, setActiveInteractiveTab] = useState<'chat' | 'stats' | 'poll'>('chat');
 
-  const { events, sports, competitions, teams, toggleSavedEvent } = useData();
+  const { events, sports, competitions, teams, toggleSavedEvent, settings } = useData();
   const { user, profile } = useAuth();
+  const [showMatchAd, setShowMatchAd] = useState(false);
 
   const event = events.find((e) => e.slug === slug || e.id === slug);
+  const matchViewersCount = useMatchViewers(event?.id);
+
+  useEffect(() => {
+    const adConfig = settings?.preRollAd;
+    if (adConfig && adConfig.enabled === false) return;
+
+    const freq = adConfig?.frequencyHours || 12;
+    if (shouldDisplayAd(freq)) {
+      setShowMatchAd(true);
+    }
+  }, [settings?.preRollAd, event?.id]);
+
+  useViewerPresence({
+    page: event ? `/events/${event.slug || event.id}` : window.location.pathname,
+    eventId: event?.id || null,
+    eventTitle: event?.title || null,
+    sportId: event?.sportId || null,
+    userId: user?.uid || null,
+    userName: profile?.displayName || user?.displayName || 'Fan',
+    enabled: Boolean(event),
+  });
 
   if (!event) {
     return (
@@ -45,6 +70,14 @@ export const EventDetailsPage: React.FC = () => {
 
   return (
     <div className="space-y-10">
+      {/* 12-Second Pre-Roll Match Ad Modal (12-hour frequency cap) */}
+      <PreRollAdModal
+        config={settings?.preRollAd}
+        isOpen={showMatchAd}
+        onClose={() => setShowMatchAd(false)}
+        contextText={`"${event.title}" খেলা শুরু হওয়ার পূর্বে সংক্ষিপ্ত ১২ সেকেন্ড বিজ্ঞাপন`}
+      />
+
       <Link
         to="/sports"
         className="inline-flex items-center gap-2 text-xs font-semibold text-[#A5B1C2] hover:text-white transition-colors"
@@ -55,6 +88,7 @@ export const EventDetailsPage: React.FC = () => {
       {/* Official Viewing Player */}
       <VideoPlayer
         src={event.authorizedViewingUrl}
+        servers={event.streamServers}
         poster={event.thumbnailUrl}
         title={event.title}
         autoFullscreen={autoFullscreen}
@@ -148,6 +182,17 @@ export const EventDetailsPage: React.FC = () => {
                 }`}
               >
                 {event.status}
+              </span>
+
+              {/* Real-time Concurrent Watchers Badge */}
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 font-semibold text-[11px]">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+                <span className="tabular-nums">
+                  {matchViewersCount > 0 ? `${matchViewersCount} জন এখন দেখছেন` : '১ জন দেখছেন'}
+                </span>
               </span>
             </div>
 

@@ -14,10 +14,14 @@ import {
   ChevronUp,
   Sparkles,
   PictureInPicture2,
+  Server,
+  Zap,
 } from 'lucide-react';
+import { StreamServer } from '../types';
 
 interface VideoPlayerProps {
   src?: string;
+  servers?: StreamServer[];
   poster?: string;
   title: string;
   autoFullscreen?: boolean;
@@ -33,6 +37,52 @@ export interface ResolutionOption {
 
 const DEFAULT_BROADCAST_STREAM = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
 
+export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
+  const url1 = (primaryUrl && primaryUrl.trim()) || DEFAULT_BROADCAST_STREAM;
+  return [
+    {
+      id: 'server-1',
+      name: 'সার্ভার ১ (আল্ট্রা এইচডি ১০৮০p)',
+      quality: '1080p Ultra HD',
+      url: url1,
+      badge: 'সবচেয়ে দ্রুত ও স্পষ্ট',
+      description: 'সর্বোচ্চ স্পিড ও ক্রিস্টাল ক্লিয়ার স্পষ্ট পিকচার কোয়ালিটি।',
+    },
+    {
+      id: 'server-2',
+      name: 'সার্ভার ২ (স্ট্যান্ডার্ড এইচডি ৭২০p)',
+      quality: '720p HD',
+      url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+      badge: 'স্থিতিশীল ব্যাকআপ',
+      description: 'স্থিতিশীল দ্বিতীয় লাইভ ফিড (হালকা ব্যাকআপ)।',
+    },
+    {
+      id: 'server-3',
+      name: 'সার্ভার ৩ (ডাটা সেভার ৪৮০p)',
+      quality: '480p SD',
+      url: 'https://cph-p2p-msl.akamaized.net/hls/live/200034/test/master.m3u8',
+      badge: 'কম মেগাবাইট খরচ',
+      description: 'কম ব্যান্ডউইথ খরচ করে খেলা দেখার জন্য ডাটা সেভার।',
+    },
+    {
+      id: 'server-4',
+      name: 'সার্ভার ৪ (অল্টারনেটিভ মিরর ৩৬০p)',
+      quality: '360p Mirror',
+      url: 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
+      badge: 'বিকল্প মিরর',
+      description: 'বিকল্প মিরর সার্ভার। দুর্বল ইন্টারনেট সংযোগের জন্য।',
+    },
+    {
+      id: 'server-5',
+      name: 'সার্ভার ৫ (ইমার্জেন্সি গ্লোবাল প্রক্সি)',
+      quality: 'Emergency SD',
+      url: 'https://test-streams.mux.dev/test_001/stream.m3u8',
+      badge: 'ইমার্জেন্সি',
+      description: 'পিক আওয়ারে অন্য সার্ভার জ্যাম থাকলে জরুরি ব্যাকআপ।',
+    },
+  ];
+};
+
 const RESOLUTION_OPTIONS: ResolutionOption[] = [
   { id: '1080p', label: '1080p Full HD', badge: '60fps', height: 1080 },
   { id: '720p', label: '720p HD', badge: '60fps', height: 720 },
@@ -43,6 +93,7 @@ const RESOLUTION_OPTIONS: ResolutionOption[] = [
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
+  servers,
   poster,
   title,
   autoFullscreen = false,
@@ -54,6 +105,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Active servers configuration (defaults to 5 tiers if not configured)
+  const activeServers = (servers && servers.length > 0) ? servers : buildDefaultServers(src);
+  const [selectedServerId, setSelectedServerId] = useState<string>(activeServers[0]?.id || 'server-1');
+
+  const currentServer = activeServers.find((s) => s.id === selectedServerId) || activeServers[0];
+  const activeStream = (currentServer.url && currentServer.url.trim()) ? currentServer.url.trim() : DEFAULT_BROADCAST_STREAM;
+
+  const isEmbed =
+    activeStream.includes('youtube.com/embed') ||
+    activeStream.includes('facebook.com') ||
+    activeStream.includes('/embed/') ||
+    activeStream.includes('dailymotion.com/embed');
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,15 +128,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [hlsLevels, setHlsLevels] = useState<{ id: string; height: number; index: number }[]>([]);
 
-  // Choose stream URL (fallback to multi-bitrate broadcast stream if empty)
-  const activeStream = (src && src.trim()) ? src.trim() : DEFAULT_BROADCAST_STREAM;
-  const isHls = activeStream.includes('.m3u8');
+  const isHls = !isEmbed && activeStream.includes('.m3u8');
   const isDirectVideo =
-    isHls ||
-    activeStream.endsWith('.mp4') ||
-    activeStream.endsWith('.webm') ||
-    activeStream.endsWith('.ogg') ||
-    activeStream.includes('.mp4?');
+    !isEmbed &&
+    (isHls ||
+      activeStream.endsWith('.mp4') ||
+      activeStream.endsWith('.webm') ||
+      activeStream.endsWith('.ogg') ||
+      activeStream.includes('.mp4?'));
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -274,6 +337,78 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   // Embed URL for YouTube or Vimeo if source is 3rd party
+  const handleSelectServer = (srv: StreamServer) => {
+    setSelectedServerId(srv.id);
+    showToast(`${srv.name} এ পরিবর্তন করা হয়েছে`);
+  };
+
+  const serverSelectorBar = (
+    <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-3 sm:p-4 space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="p-1.5 rounded-lg bg-[#00B7FF]/15 text-[#00B7FF]">
+            <Server className="w-4 h-4" />
+          </span>
+          <div>
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              লাইভ স্ট্রিমিং সার্ভার (Multi-Server Streaming)
+            </span>
+            <p className="text-[11px] text-[#A5B1C2]">
+              সার্ভার ১ সবচেয়ে সুন্দর ও স্পষ্ট। আটকে গেলে বা দুর্বল নেটওয়ার্কে অন্য সার্ভারে সুইচ করুন।
+            </p>
+          </div>
+        </div>
+        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 self-start sm:self-auto">
+          ৫টি সার্ভার সক্রিয়
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {activeServers.slice(0, 5).map((srv, idx) => {
+          const isSelected = currentServer.id === srv.id;
+          return (
+            <button
+              key={srv.id}
+              type="button"
+              onClick={() => handleSelectServer(srv)}
+              className={`min-h-[46px] p-2.5 rounded-xl text-left transition-all border ${
+                isSelected
+                  ? 'bg-[#00B7FF]/15 border-[#00B7FF] shadow-lg shadow-[#00B7FF]/20 ring-1 ring-[#00B7FF]'
+                  : 'bg-[#101722] border-white/10 hover:border-white/20 text-[#A5B1C2] hover:text-white'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`text-[11px] font-extrabold flex items-center gap-1 ${
+                  isSelected ? 'text-[#00B7FF]' : 'text-white'
+                }`}>
+                  {idx === 0 ? '⚡ ' : ''}সার্ভার {idx + 1}
+                </span>
+                <span className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+                  isSelected ? 'bg-[#00B7FF] text-[#080B12]' : 'bg-white/10 text-[#A5B1C2]'
+                }`}>
+                  {srv.quality.split(' ')[0]}
+                </span>
+              </div>
+              <p className="text-[10px] text-[#A5B1C2] truncate mt-0.5">
+                {srv.badge || srv.quality}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected Server Description */}
+      <div className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/5 text-[11px] text-[#A5B1C2] flex items-center justify-between">
+        <span>
+          <strong className="text-white">{currentServer.name}:</strong> {currentServer.description || currentServer.quality}
+        </span>
+        <span className="text-[10px] text-[#00B7FF] font-mono">
+          {isEmbed ? '🌐 Embed Stream' : '⚡ HLS Live Stream'}
+        </span>
+      </div>
+    </div>
+  );
+
   if (!isDirectVideo) {
     let embedUrl = activeStream;
     if (activeStream.includes('youtube.com/watch?v=')) {
@@ -285,27 +420,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     return (
-      <div
-        ref={containerRef}
-        className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl group"
-      >
-        <iframe
-          src={embedUrl}
-          title={title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowFullScreen
-          className="w-full h-full border-0"
-        />
-        {/* Floating Quick Actions Bar for Embed */}
-        <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md border border-white/20 text-white text-xs font-semibold hover:border-[#00B7FF] flex items-center gap-1.5 transition-colors"
-          >
-            <Maximize className="w-3.5 h-3.5 text-[#00B7FF]" />
-            <span>ফুল স্ক্রিন (Full Screen)</span>
-          </button>
+      <div className="space-y-3">
+        {serverSelectorBar}
+        <div
+          ref={containerRef}
+          className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl group"
+        >
+          <iframe
+            src={embedUrl}
+            title={title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+          {/* Floating Quick Actions Bar for Embed */}
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md border border-white/20 text-white text-xs font-semibold hover:border-[#00B7FF] flex items-center gap-1.5 transition-colors"
+            >
+              <Maximize className="w-3.5 h-3.5 text-[#00B7FF]" />
+              <span>ফুল স্ক্রিন (Full Screen)</span>
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -315,14 +453,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     RESOLUTION_OPTIONS.find((r) => r.id === currentResolution) || RESOLUTION_OPTIONS[0];
 
   return (
-    <div
-      ref={containerRef}
-      onMouseMove={resetControlsTimer}
-      onTouchStart={resetControlsTimer}
-      onClick={() => resetControlsTimer()}
-      onDoubleClick={toggleFullscreen}
-      className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl select-none group"
-    >
+    <div className="space-y-3">
+      {serverSelectorBar}
+      <div
+        ref={containerRef}
+        onMouseMove={resetControlsTimer}
+        onTouchStart={resetControlsTimer}
+        onClick={() => resetControlsTimer()}
+        onDoubleClick={toggleFullscreen}
+        className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl select-none group"
+      >
       {/* Video Element */}
       <video
         ref={videoRef}
@@ -557,6 +697,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 };
