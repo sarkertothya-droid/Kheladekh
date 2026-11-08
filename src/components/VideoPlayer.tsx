@@ -8,14 +8,17 @@ import {
   Maximize,
   Minimize,
   Sliders,
-  Check,
   Radio,
   Loader2,
   ChevronUp,
   Sparkles,
   PictureInPicture2,
   Server,
-  Zap,
+  AlertTriangle,
+  RefreshCw,
+  ExternalLink,
+  ShieldCheck,
+  Check,
 } from 'lucide-react';
 import { StreamServer } from '../types';
 
@@ -74,11 +77,11 @@ export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
     },
     {
       id: 'server-5',
-      name: 'সার্ভার ৫ (ইমার্জেন্সি গ্লোবাল প্রক্সি)',
-      quality: 'Emergency SD',
-      url: 'https://test-streams.mux.dev/test_001/stream.m3u8',
-      badge: 'ইমার্জেন্সি',
-      description: 'পিক আওয়ারে অন্য সার্ভার জ্যাম থাকলে জরুরি ব্যাকআপ।',
+      name: 'সার্ভার ৫ (ইমার্জেন্সি গ্লোবাল ফিড)',
+      quality: 'Direct Stream',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      badge: 'ইমার্জেন্সি ব্যাকআপ',
+      description: 'পিক আওয়ারে অন্য সার্ভার জ্যাম থাকলে জরুরি ডিরেক্ট ব্যাকআপ ফিড।',
     },
   ];
 };
@@ -106,29 +109,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Active servers configuration (defaults to 5 tiers if not configured)
-  const activeServers = (servers && servers.length > 0) ? servers : buildDefaultServers(src);
+  const activeServers = servers && servers.length > 0 ? servers : buildDefaultServers(src);
   const [selectedServerId, setSelectedServerId] = useState<string>(activeServers[0]?.id || 'server-1');
 
   const currentServer = activeServers.find((s) => s.id === selectedServerId) || activeServers[0];
-  const activeStream = (currentServer.url && currentServer.url.trim()) ? currentServer.url.trim() : DEFAULT_BROADCAST_STREAM;
+  const activeStream =
+    currentServer.url && currentServer.url.trim() ? currentServer.url.trim() : DEFAULT_BROADCAST_STREAM;
 
+  // Determine if stream is an embed or direct video
+  const isYouTube =
+    activeStream.includes('youtube.com') ||
+    activeStream.includes('youtu.be');
   const isEmbed =
-    activeStream.includes('youtube.com/embed') ||
+    isYouTube ||
     activeStream.includes('facebook.com') ||
     activeStream.includes('/embed/') ||
-    activeStream.includes('dailymotion.com/embed');
+    activeStream.includes('dailymotion.com');
 
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const [showResolutionMenu, setShowResolutionMenu] = useState(false);
-  const [currentResolution, setCurrentResolution] = useState<string>(initialResolution);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [hlsLevels, setHlsLevels] = useState<{ id: string; height: number; index: number }[]>([]);
-
-  const isHls = !isEmbed && activeStream.includes('.m3u8');
+  const isHls = !isEmbed && (activeStream.includes('.m3u8') || activeStream.includes('m3u8?'));
   const isDirectVideo =
     !isEmbed &&
     (isHls ||
@@ -136,6 +134,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       activeStream.endsWith('.webm') ||
       activeStream.endsWith('.ogg') ||
       activeStream.includes('.mp4?'));
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true); // Default muted to ensure modern browser autoplay succeeds
+  const [showUnmuteBanner, setShowUnmuteBanner] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasPlaybackError, setHasPlaybackError] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [showResolutionMenu, setShowResolutionMenu] = useState(false);
+  const [currentResolution, setCurrentResolution] = useState<string>(initialResolution);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [hlsLevels, setHlsLevels] = useState<{ id: string; height: number; index: number }[]>([]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -189,15 +199,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Initialize Video & HLS
   useEffect(() => {
+    setHasPlaybackError(false);
     setIsPlaying(false);
-    const video = videoRef.current;
-    if (!video || !activeStream || !isHls) return;
+    setIsLoading(true);
 
-    if (Hls.isSupported()) {
+    const video = videoRef.current;
+    if (!video || !activeStream || !isDirectVideo) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Set muted initially to satisfy browser autoplay security policy
+    video.muted = isMuted;
+
+    if (isHls && Hls.isSupported()) {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
       });
       hlsRef.current = hls;
 
@@ -205,6 +231,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        setIsLoading(false);
+        setHasPlaybackError(false);
+
         if (data.levels && data.levels.length > 0) {
           const parsed = data.levels.map((lvl, idx) => ({
             id: `${lvl.height}p`,
@@ -213,14 +242,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }));
           setHlsLevels(parsed);
         }
-        // Attempt autoplay with mute if policy allows
-        video.play().then(() => setIsPlaying(true)).catch(() => {
-          // Autoplay was prevented, wait for user interaction
-        });
+
+        // Try autoplaying muted
+        video.muted = true;
+        video
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+            setShowUnmuteBanner(true);
+          })
+          .catch((err) => {
+            console.log('Autoplay prevented, ready for user interaction:', err);
+            setIsPlaying(false);
+          });
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
+          console.warn('HLS fatal error encountered:', data.type);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               hls.startLoad();
@@ -230,6 +269,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               break;
             default:
               hls.destroy();
+              setHasPlaybackError(true);
+              setIsLoading(false);
               break;
           }
         }
@@ -239,10 +280,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hls.destroy();
         hlsRef.current = null;
       };
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native Safari HLS
       video.src = activeStream;
+      video.muted = true;
+      video
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+          setIsLoading(false);
+          setShowUnmuteBanner(true);
+        })
+        .catch(() => {
+          setIsLoading(false);
+        });
+    } else {
+      // Direct MP4 / WebM
+      video.src = activeStream;
+      video.muted = true;
+      video
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+          setIsLoading(false);
+          setShowUnmuteBanner(true);
+        })
+        .catch(() => {
+          setIsLoading(false);
+        });
     }
-  }, [activeStream, isHls]);
+  }, [activeStream, isHls, isDirectVideo]);
 
   // Auto-fullscreen trigger if requested
   useEffect(() => {
@@ -255,7 +322,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
-      video.play().then(() => setIsPlaying(true)).catch(() => {});
+      video.muted = false;
+      setIsMuted(false);
+      setShowUnmuteBanner(false);
+      video
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          // If unmuted play fails, try muted
+          video.muted = true;
+          setIsMuted(true);
+          video.play().then(() => setIsPlaying(true)).catch(() => {});
+        });
     } else {
       video.pause();
       setIsPlaying(false);
@@ -263,11 +341,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     resetControlsTimer();
   };
 
+  const unmuteAndPlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = false;
+    setIsMuted(false);
+    setShowUnmuteBanner(false);
+    video.play().then(() => setIsPlaying(true)).catch(() => {});
+    showToast('সাউন্ড চালু করা হয়েছে (Sound Unmuted)');
+  };
+
   const toggleMute = () => {
     const video = videoRef.current;
     if (!video) return;
     video.muted = !video.muted;
     setIsMuted(video.muted);
+    if (!video.muted) setShowUnmuteBanner(false);
     showToast(video.muted ? 'সাউন্ড মিউট করা হয়েছে (Muted)' : 'সাউন্ড চালু করা হয়েছে (Unmuted)');
     resetControlsTimer();
   };
@@ -318,7 +407,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current.currentLevel = -1;
       } else {
         const targetHeight = res.height || 720;
-        // Find closest level
         let closestIdx = 0;
         let minDiff = 99999;
         hlsLevels.forEach((lvl) => {
@@ -336,14 +424,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     resetControlsTimer();
   };
 
-  // Embed URL for YouTube or Vimeo if source is 3rd party
   const handleSelectServer = (srv: StreamServer) => {
     setSelectedServerId(srv.id);
+    setHasPlaybackError(false);
     showToast(`${srv.name} এ পরিবর্তন করা হয়েছে`);
   };
 
+  const retryPlayback = () => {
+    setHasPlaybackError(false);
+    setIsLoading(true);
+    const video = videoRef.current;
+    if (video) {
+      video.load();
+      video.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  };
+
+  // 5-Server Selector Component
   const serverSelectorBar = (
-    <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-3 sm:p-4 space-y-3">
+    <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-3 sm:p-4 space-y-3 shadow-lg">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="p-1.5 rounded-lg bg-[#00B7FF]/15 text-[#00B7FF]">
@@ -351,15 +450,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </span>
           <div>
             <span className="text-xs font-bold text-white flex items-center gap-1.5">
-              লাইভ স্ট্রিমিং সার্ভার (Multi-Server Streaming)
+              ৫টি লাইভ স্ট্রিমিং সার্ভার (Multi-Server Streaming)
             </span>
             <p className="text-[11px] text-[#A5B1C2]">
-              সার্ভার ১ সবচেয়ে সুন্দর ও স্পষ্ট। আটকে গেলে বা দুর্বল নেটওয়ার্কে অন্য সার্ভারে সুইচ করুন।
+              সার্ভার ১ সবচেয়ে স্পষ্ট। কোনো সার্ভার আটকে গেলে সাথে সাথে অন্য সার্ভারে সুইচ করুন।
             </p>
           </div>
         </div>
-        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 self-start sm:self-auto">
-          ৫টি সার্ভার সক্রিয়
+        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 self-start sm:self-auto flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          সব সার্ভার সক্রিয়
         </span>
       </div>
 
@@ -378,14 +478,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-[11px] font-extrabold flex items-center gap-1 ${
-                  isSelected ? 'text-[#00B7FF]' : 'text-white'
-                }`}>
+                <span
+                  className={`text-[11px] font-extrabold flex items-center gap-1 ${
+                    isSelected ? 'text-[#00B7FF]' : 'text-white'
+                  }`}
+                >
                   {idx === 0 ? '⚡ ' : ''}সার্ভার {idx + 1}
                 </span>
-                <span className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
-                  isSelected ? 'bg-[#00B7FF] text-[#080B12]' : 'bg-white/10 text-[#A5B1C2]'
-                }`}>
+                <span
+                  className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+                    isSelected ? 'bg-[#00B7FF] text-[#080B12]' : 'bg-white/10 text-[#A5B1C2]'
+                  }`}
+                >
                   {srv.quality.split(' ')[0]}
                 </span>
               </div>
@@ -397,26 +501,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         })}
       </div>
 
-      {/* Selected Server Description */}
-      <div className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/5 text-[11px] text-[#A5B1C2] flex items-center justify-between">
-        <span>
-          <strong className="text-white">{currentServer.name}:</strong> {currentServer.description || currentServer.quality}
-        </span>
-        <span className="text-[10px] text-[#00B7FF] font-mono">
-          {isEmbed ? '🌐 Embed Stream' : '⚡ HLS Live Stream'}
-        </span>
+      {/* Selected Server Description & External View Link */}
+      <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/5 text-[11px] text-[#A5B1C2] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <strong className="text-white">{currentServer.name}:</strong>{' '}
+          {currentServer.description || currentServer.quality}
+        </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <a
+            href={activeStream}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-[#00B7FF] hover:underline flex items-center gap-1 font-mono"
+            title="ব্রাউজারে সরাসরি স্ট্রিম লিংক খুলুন"
+          >
+            <span>সরাসরি লিংক</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded">
+            {isEmbed ? '🌐 Embed Stream' : isHls ? '⚡ HLS Live Feed' : '🎥 Direct Video'}
+          </span>
+        </div>
       </div>
     </div>
   );
 
+  // If Third-Party Embed (YouTube, Facebook, etc.)
   if (!isDirectVideo) {
     let embedUrl = activeStream;
     if (activeStream.includes('youtube.com/watch?v=')) {
       const videoId = new URL(activeStream).searchParams.get('v');
-      if (videoId) embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0`;
+      if (videoId) embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=0&rel=0`;
     } else if (activeStream.includes('youtu.be/')) {
       const videoId = activeStream.split('youtu.be/')[1]?.split('?')[0];
-      if (videoId) embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0`;
+      if (videoId) embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=0&rel=0`;
     }
 
     return (
@@ -433,15 +551,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             allowFullScreen
             className="w-full h-full border-0"
           />
-          {/* Floating Quick Actions Bar for Embed */}
+
+          {/* Quick External Fallback Button */}
           <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            <a
+              href={activeStream}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md border border-white/20 text-white text-xs font-semibold hover:border-[#00B7FF] flex items-center gap-1.5 transition-colors shadow-lg"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-[#00B7FF]" />
+              <span>নতুন উইন্ডোতে খুলুন</span>
+            </a>
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md border border-white/20 text-white text-xs font-semibold hover:border-[#00B7FF] flex items-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md border border-white/20 text-white text-xs font-semibold hover:border-[#00B7FF] flex items-center gap-1.5 transition-colors shadow-lg"
             >
               <Maximize className="w-3.5 h-3.5 text-[#00B7FF]" />
-              <span>ফুল স্ক্রিন (Full Screen)</span>
+              <span>ফুল স্ক্রিন</span>
             </button>
           </div>
         </div>
@@ -463,241 +591,340 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onDoubleClick={toggleFullscreen}
         className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl select-none group"
       >
-      {/* Video Element */}
-      <video
-        ref={videoRef}
-        src={isHls ? undefined : activeStream}
-        poster={poster}
-        playsInline
-        preload="metadata"
-        onWaiting={() => setIsLoading(true)}
-        onCanPlay={() => setIsLoading(false)}
-        onPlaying={() => {
-          setIsLoading(false);
-          setIsPlaying(true);
-        }}
-        onPause={() => setIsPlaying(false)}
-        className="w-full h-full object-cover cursor-pointer"
-        onClick={togglePlay}
-      />
+        {/* Video Element */}
+        <video
+          ref={videoRef}
+          poster={poster}
+          playsInline
+          autoPlay
+          muted={isMuted}
+          preload="auto"
+          onWaiting={() => setIsLoading(true)}
+          onCanPlay={() => {
+            setIsLoading(false);
+            setHasPlaybackError(false);
+          }}
+          onPlaying={() => {
+            setIsLoading(false);
+            setIsPlaying(true);
+            setHasPlaybackError(false);
+          }}
+          onPause={() => setIsPlaying(false)}
+          onError={() => {
+            console.warn('Video element error triggered');
+            setIsLoading(false);
+            setHasPlaybackError(true);
+          }}
+          className="w-full h-full object-cover cursor-pointer"
+          onClick={togglePlay}
+        />
 
-      {/* Loading Spinner */}
-      {isLoading && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center pointer-events-none z-10">
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="w-9 h-9 text-[#00B7FF] animate-spin" />
-            <span className="text-xs font-medium text-white/80">লাইভ স্ট্রিম লোড হচ্ছে...</span>
+        {/* Unmute notification banner (Browser Autoplay helper) */}
+        {showUnmuteBanner && isPlaying && isMuted && (
+          <div className="absolute top-14 left-4 z-30 animate-fade-in">
+            <button
+              type="button"
+              onClick={unmuteAndPlay}
+              className="px-3.5 py-1.5 rounded-full bg-amber-500 text-black text-xs font-extrabold flex items-center gap-2 shadow-xl hover:bg-amber-400 transition-transform active:scale-95 border border-amber-300"
+            >
+              <VolumeX className="w-4 h-4 animate-bounce" />
+              <span>সাউন্ড চালু করতে এখানে ট্যাপ করুন (Tap to Unmute)</span>
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Top Bar: Brand, Live Badge, and Match Title */}
-      <div
-        className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent flex items-center justify-between pointer-events-none transition-opacity duration-300 z-20 ${
-          showControls ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          <span className="font-display text-xs font-extrabold tracking-tight text-white/90 drop-shadow">
-            Khela<span className="text-[#00B7FF]">DekH</span>
-          </span>
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#16D98A]/20 border border-[#16D98A]/40 text-[#16D98A] text-[10px] font-mono font-bold tracking-wider uppercase">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#16D98A] animate-pulse" />
-            LIVE
+        {/* Loading Spinner */}
+        {isLoading && !hasPlaybackError && (
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center pointer-events-none z-10">
+            <div className="flex flex-col items-center gap-2.5 p-4 rounded-2xl bg-black/70 border border-white/10">
+              <Loader2 className="w-9 h-9 text-[#00B7FF] animate-spin" />
+              <span className="text-xs font-semibold text-white">লাইভ স্ট্রিম লোড হচ্ছে...</span>
+              <span className="text-[10px] text-[#A5B1C2] font-mono">{currentServer.name}</span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <span className="text-xs font-semibold text-white/90 truncate max-w-[200px] sm:max-w-md drop-shadow">
-          {title}
-        </span>
-      </div>
+        {/* Playback Error Overlay with 1-click Server Switching */}
+        {hasPlaybackError && (
+          <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-30 p-4">
+            <div className="max-w-md w-full bg-[#151E2B] border border-amber-500/30 rounded-2xl p-5 text-center space-y-4 shadow-2xl">
+              <div className="w-12 h-12 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">
+                  {currentServer.name} থেকে স্ট্রিম সংযোগে বিলম্ব হচ্ছে
+                </h3>
+                <p className="text-xs text-[#A5B1C2] mt-1">
+                  কোনো সমস্যা নেই! নিচের বিকল্প সার্ভারগুলোতে তাৎক্ষণিকভাবে খেলা দেখা যাবে।
+                </p>
+              </div>
 
-      {/* Center Toast Feedback */}
-      {toastMessage && (
-        <div className="absolute top-16 inset-x-0 flex justify-center pointer-events-none z-30 animate-fade-in">
-          <div className="px-4 py-2 rounded-xl bg-black/85 backdrop-blur-md border border-[#00B7FF]/40 text-white text-xs font-medium shadow-xl flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-[#00B7FF]" />
-            <span>{toastMessage}</span>
+              {/* Server switch buttons */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {activeServers
+                  .filter((s) => s.id !== currentServer.id)
+                  .slice(0, 4)
+                  .map((altServer) => (
+                    <button
+                      key={altServer.id}
+                      type="button"
+                      onClick={() => handleSelectServer(altServer)}
+                      className="p-2.5 rounded-xl bg-[#101722] hover:bg-[#00B7FF]/15 border border-white/10 hover:border-[#00B7FF] text-white text-xs font-bold transition-all text-left flex items-center justify-between"
+                    >
+                      <span className="truncate">{altServer.name.split(' ')[0]}</span>
+                      <span className="text-[10px] text-[#00B7FF] font-mono">
+                        {altServer.quality.split(' ')[0]}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={retryPlayback}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>পুনরায় চেষ্টা করুন</span>
+                </button>
+
+                <a
+                  href={activeStream}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-1.5 hover:bg-[#33C5FF] transition-all"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>সরাসরি ব্রাউজারে খুলুন</span>
+                </a>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Prominent Center On-Tap Quick Action Bar */}
-      <div
-        className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300 z-20 ${
-          showControls ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
+        {/* Top Bar: Brand, Live Badge, and Match Title */}
         <div
-          onClick={(e) => e.stopPropagation()}
-          className="pointer-events-auto flex flex-wrap items-center justify-center gap-3 p-2.5 rounded-2xl bg-black/75 backdrop-blur-md border border-white/15 shadow-2xl"
+          className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between pointer-events-none transition-opacity duration-300 z-20 ${
+            showControls ? 'opacity-100' : 'opacity-0'
+          }`}
         >
-          {/* OPTION 1: Resolution Changer Button */}
-          <div className="relative">
+          <div className="flex items-center gap-3">
+            <span className="font-display text-xs font-extrabold tracking-tight text-white/90 drop-shadow">
+              Khela<span className="text-[#00B7FF]">DekH</span>
+            </span>
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#16D98A]/20 border border-[#16D98A]/40 text-[#16D98A] text-[10px] font-mono font-bold tracking-wider uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#16D98A] animate-pulse" />
+              LIVE
+            </div>
+          </div>
+
+          <span className="text-xs font-semibold text-white/90 truncate max-w-[200px] sm:max-w-md drop-shadow">
+            {title}
+          </span>
+        </div>
+
+        {/* Toast Feedback */}
+        {toastMessage && (
+          <div className="absolute top-16 inset-x-0 flex justify-center pointer-events-none z-30 animate-fade-in">
+            <div className="px-4 py-2 rounded-xl bg-black/85 backdrop-blur-md border border-[#00B7FF]/40 text-white text-xs font-medium shadow-xl flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-[#00B7FF]" />
+              <span>{toastMessage}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Prominent Center Play / Action Bar */}
+        <div
+          className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300 z-20 ${
+            showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          {!isPlaying && !isLoading && !hasPlaybackError && (
+            <button
+              type="button"
+              onClick={togglePlay}
+              className="pointer-events-auto p-4 rounded-full bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] shadow-2xl shadow-[#00B7FF]/50 transition-all hover:scale-110 active:scale-95 flex items-center gap-2"
+              title="খেলা শুরু করুন"
+            >
+              <Play className="w-8 h-8 fill-current ml-1" />
+            </button>
+          )}
+
+          {isPlaying && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="pointer-events-auto flex flex-wrap items-center justify-center gap-3 p-2.5 rounded-2xl bg-black/75 backdrop-blur-md border border-white/15 shadow-2xl"
+            >
+              {/* Resolution Popover Button */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResolutionMenu((prev) => !prev);
+                    resetControlsTimer();
+                  }}
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/15 hover:border-[#00B7FF] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-md active:scale-95"
+                  aria-label="Resolution switcher"
+                >
+                  <Sliders className="w-4 h-4 text-[#00B7FF]" />
+                  <div className="text-left">
+                    <span className="block text-[10px] text-[#A5B1C2] uppercase font-mono">
+                      রেজোলিউশন
+                    </span>
+                    <span className="text-xs font-bold text-white flex items-center gap-1">
+                      {activeResObj.id.toUpperCase()}
+                      {activeResObj.badge && (
+                        <span className="text-[10px] px-1 rounded bg-[#00B7FF]/20 text-[#00B7FF] font-mono">
+                          {activeResObj.badge}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <ChevronUp
+                    className={`w-3.5 h-3.5 text-[#A5B1C2] transition-transform duration-200 ${
+                      showResolutionMenu ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {showResolutionMenu && (
+                  <div className="absolute bottom-full left-0 mb-2 w-56 rounded-xl bg-[#101722]/95 backdrop-blur-xl border border-white/20 p-1.5 shadow-2xl z-40 animate-in fade-in zoom-in-95">
+                    <div className="px-3 py-2 border-b border-white/10 mb-1 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-white uppercase tracking-wider">
+                        ভিডিও রেজোলিউশন
+                      </span>
+                      <span className="text-[10px] text-[#00B7FF] font-mono">HD Quality</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {RESOLUTION_OPTIONS.map((opt) => {
+                        const isSelected = currentResolution === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleSelectResolution(opt)}
+                            className={`w-full min-h-[38px] px-3 py-2 rounded-lg text-left text-xs font-medium flex items-center justify-between transition-colors ${
+                              isSelected
+                                ? 'bg-[#00B7FF]/20 text-[#00B7FF] font-bold'
+                                : 'text-white hover:bg-white/10'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Radio
+                                className={`w-3 h-3 ${
+                                  isSelected ? 'text-[#00B7FF]' : 'text-[#A5B1C2]'
+                                }`}
+                              />
+                              <span>{opt.label}</span>
+                            </div>
+                            {opt.badge && (
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                                  isSelected
+                                    ? 'bg-[#00B7FF] text-black font-bold'
+                                    : 'bg-white/10 text-[#A5B1C2]'
+                                }`}
+                              >
+                                {opt.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Fullscreen Toggle */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-[#00B7FF]/20 active:scale-95"
+              >
+                {isFullscreen ? (
+                  <>
+                    <Minimize className="w-4 h-4" />
+                    <span>ফুল স্ক্রিন বন্ধ করুন</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize className="w-4 h-4" />
+                    <span>ফুল স্ক্রিন করুন</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Controls Bar */}
+        <div
+          className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-4 flex items-center justify-between gap-3 transition-opacity duration-300 z-20 ${
+            showControls ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          {/* Left: Play/Pause, Mute */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={togglePlay}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-label={isMuted ? 'Unmute' : 'Mute'}
+              className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+            >
+              {isMuted ? (
+                <VolumeX className="w-4 h-4 text-red-400" />
+              ) : (
+                <Volume2 className="w-4 h-4 text-[#16D98A]" />
+              )}
+            </button>
+          </div>
+
+          {/* Right Controls: Resolution badge + PiP + Fullscreen */}
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => {
                 setShowResolutionMenu((prev) => !prev);
                 resetControlsTimer();
               }}
-              className="min-h-[44px] px-4 py-2 rounded-xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/15 hover:border-[#00B7FF] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-md active:scale-95"
-              aria-label="Resolution switcher"
+              className="min-h-[38px] px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-white/10"
             >
-              <Sliders className="w-4 h-4 text-[#00B7FF]" />
-              <div className="text-left">
-                <span className="block text-[10px] text-[#A5B1C2] uppercase font-mono">রেজোলিউশন</span>
-                <span className="text-xs font-bold text-white flex items-center gap-1">
-                  {activeResObj.id.toUpperCase()}
-                  {activeResObj.badge && (
-                    <span className="text-[10px] px-1 rounded bg-[#00B7FF]/20 text-[#00B7FF] font-mono">
-                      {activeResObj.badge}
-                    </span>
-                  )}
-                </span>
-              </div>
-              <ChevronUp
-                className={`w-3.5 h-3.5 text-[#A5B1C2] transition-transform duration-200 ${
-                  showResolutionMenu ? 'rotate-180' : ''
-                }`}
-              />
+              <Sliders className="w-3.5 h-3.5 text-[#00B7FF]" />
+              <span className="font-mono text-[11px]">{activeResObj.id.toUpperCase()}</span>
             </button>
 
-            {/* Resolution Selection Popover Menu */}
-            {showResolutionMenu && (
-              <div className="absolute bottom-full left-0 mb-2 w-56 rounded-xl bg-[#101722]/95 backdrop-blur-xl border border-white/20 p-1.5 shadow-2xl z-40 animate-in fade-in zoom-in-95">
-                <div className="px-3 py-2 border-b border-white/10 mb-1 flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white uppercase tracking-wider">
-                    ভিডিও রেজোলিউশন
-                  </span>
-                  <span className="text-[10px] text-[#00B7FF] font-mono">HD Quality</span>
-                </div>
-                <div className="space-y-0.5">
-                  {RESOLUTION_OPTIONS.map((opt) => {
-                    const isSelected = currentResolution === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handleSelectResolution(opt)}
-                        className={`w-full min-h-[38px] px-3 py-2 rounded-lg text-left text-xs font-medium flex items-center justify-between transition-colors ${
-                          isSelected
-                            ? 'bg-[#00B7FF]/20 text-[#00B7FF] font-bold'
-                            : 'text-white hover:bg-white/10'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Radio
-                            className={`w-3 h-3 ${
-                              isSelected ? 'text-[#00B7FF]' : 'text-[#A5B1C2]'
-                            }`}
-                          />
-                          <span>{opt.label}</span>
-                        </div>
-                        {opt.badge && (
-                          <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                              isSelected
-                                ? 'bg-[#00B7FF] text-black font-bold'
-                                : 'bg-white/10 text-[#A5B1C2]'
-                            }`}
-                          >
-                            {opt.badge}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={togglePiP}
+              title="পিকচার-ইন-পিকচার (Picture-in-Picture)"
+              className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+            >
+              <PictureInPicture2 className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-[#00B7FF] hover:text-black text-white transition-colors"
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+            </button>
           </div>
-
-          {/* OPTION 2: Full Screen Button */}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="min-h-[44px] px-4 py-2 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-[#00B7FF]/20 active:scale-95"
-            aria-label="Full screen toggle"
-          >
-            {isFullscreen ? (
-              <>
-                <Minimize className="w-4 h-4" />
-                <span>ফুল স্ক্রিন বন্ধ করুন (Exit)</span>
-              </>
-            ) : (
-              <>
-                <Maximize className="w-4 h-4" />
-                <span>ফুল স্ক্রিন করুন (Full Screen)</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
-
-      {/* Bottom Controls Bar */}
-      <div
-        className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-4 flex items-center justify-between gap-3 transition-opacity duration-300 z-20 ${
-          showControls ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        {/* Left: Play/Pause, Mute */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={togglePlay}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"
-          >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleMute}
-            aria-label={isMuted ? 'Unmute' : 'Mute'}
-            className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
-          >
-            {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
-          </button>
-        </div>
-
-        {/* Right Controls: Resolution badge + Fullscreen toggle */}
-        <div className="flex items-center gap-2">
-          {/* Resolution button on bottom bar */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowResolutionMenu((prev) => !prev);
-              resetControlsTimer();
-            }}
-            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-white/10"
-          >
-            <Sliders className="w-3.5 h-3.5 text-[#00B7FF]" />
-            <span className="font-mono text-[11px]">{activeResObj.id.toUpperCase()}</span>
-          </button>
-
-          {/* Picture-in-Picture button */}
-          <button
-            type="button"
-            onClick={togglePiP}
-            title="পিকচার-ইন-পিকচার (Picture-in-Picture)"
-            className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
-          >
-            <PictureInPicture2 className="w-4 h-4" />
-          </button>
-
-          {/* Fullscreen button on bottom bar */}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            aria-label={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-            className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-[#00B7FF] hover:text-black text-white transition-colors"
-          >
-            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-          </button>
-        </div>
-      </div>
-    </div>
     </div>
   );
 };

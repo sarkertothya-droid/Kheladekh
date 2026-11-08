@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, Bell, BellOff, Calendar, Clock, MessageSquare, Activity, BarChart3, Users, Eye } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Calendar, Clock, MessageSquare, Activity, BarChart3, Users, Eye, Sparkles, RefreshCw, Zap } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { VideoPlayer } from '../components/VideoPlayer';
@@ -11,6 +11,7 @@ import { LiveMatchPoll } from '../components/LiveMatchPoll';
 import { useViewerPresence, useMatchViewers } from '../services/presenceService';
 import { shouldDisplayAd } from '../services/adService';
 import { PreRollAdModal } from '../components/PreRollAdModal';
+import { StreamServer } from '../types';
 
 export const EventDetailsPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -25,6 +26,54 @@ export const EventDetailsPage: React.FC = () => {
 
   const event = events.find((e) => e.slug === slug || e.id === slug);
   const matchViewersCount = useMatchViewers(event?.id);
+
+  // Automated live stream discovery state
+  const [autoServers, setAutoServers] = useState<StreamServer[] | null>(
+    event?.streamServers && event.streamServers.length > 0 ? event.streamServers : null
+  );
+  const [isSearchingStreams, setIsSearchingStreams] = useState(false);
+  const [autoSearchStatus, setAutoSearchStatus] = useState<string | null>(null);
+
+  // Trigger live stream auto-discovery whenever match is loaded
+  const discoverLiveStreams = (forceRefresh = false) => {
+    if (!event) return;
+    setIsSearchingStreams(true);
+    setAutoSearchStatus('লাইভ স্ট্রিম স্বয়ংক্রিয়ভাবে অনুসন্ধান ও ৫টি সার্ভার তৈরি হচ্ছে...');
+
+    fetch('/api/discover-stream-servers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchTitle: event.title, sportId: event.sportId }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.servers && data.servers.length > 0) {
+          setAutoServers(data.servers);
+          setAutoSearchStatus(`⚡ লাইভ স্ট্রিম স্বয়ংক্রিয়ভাবে সংযোগ সম্পন্ন (${data.servers.length}টি সার্ভার প্রস্তুত)`);
+          setTimeout(() => setAutoSearchStatus(null), 5000);
+        } else {
+          setAutoSearchStatus('ডিফল্ট হাই-স্পিড সার্ভার সক্রিয় রয়েছে');
+          setTimeout(() => setAutoSearchStatus(null), 3000);
+        }
+      })
+      .catch((err) => {
+        console.warn('Auto stream search error:', err);
+        setAutoSearchStatus(null);
+      })
+      .finally(() => setIsSearchingStreams(false));
+  };
+
+  useEffect(() => {
+    if (!event) return;
+    const hasExistingLiveFeed =
+      event.streamServers &&
+      event.streamServers.length > 0 &&
+      !event.authorizedViewingUrl?.includes('test-streams.mux.dev');
+
+    if (!hasExistingLiveFeed) {
+      discoverLiveStreams(false);
+    }
+  }, [event?.id, event?.title]);
 
   useEffect(() => {
     const adConfig = settings?.preRollAd;
@@ -78,17 +127,40 @@ export const EventDetailsPage: React.FC = () => {
         contextText={`"${event.title}" খেলা শুরু হওয়ার পূর্বে সংক্ষিপ্ত ১২ সেকেন্ড বিজ্ঞাপন`}
       />
 
-      <Link
-        to="/sports"
-        className="inline-flex items-center gap-2 text-xs font-semibold text-[#A5B1C2] hover:text-white transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" /> Back to Fixtures
-      </Link>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <Link
+          to="/sports"
+          className="inline-flex items-center gap-2 text-xs font-semibold text-[#A5B1C2] hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back to Fixtures
+        </Link>
 
-      {/* Official Viewing Player */}
+        {/* Auto Stream Search Status & Re-Sync Trigger */}
+        <div className="flex items-center gap-2">
+          {autoSearchStatus && (
+            <div className="px-3 py-1 rounded-full bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-medium flex items-center gap-1.5 animate-fade-in shadow-sm">
+              <Zap className="w-3.5 h-3.5 animate-pulse" />
+              <span>{autoSearchStatus}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={isSearchingStreams}
+            onClick={() => discoverLiveStreams(true)}
+            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-all border border-white/10 disabled:opacity-50"
+            title="লাইভ স্ট্রিম স্বয়ংক্রিয়ভাবে পুনরায় অনুসন্ধান করুন"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-[#00B7FF] ${isSearchingStreams ? 'animate-spin' : ''}`} />
+            <span>{isSearchingStreams ? 'অটো-সার্চ হচ্ছে...' : 'অটো লাইভ স্ট্রিম রিফ্রেশ'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Official Viewing Player with 5 Multi-bitrate Servers */}
       <VideoPlayer
-        src={event.authorizedViewingUrl}
-        servers={event.streamServers}
+        src={autoServers?.[0]?.url || event.authorizedViewingUrl}
+        servers={autoServers || event.streamServers}
         poster={event.thumbnailUrl}
         title={event.title}
         autoFullscreen={autoFullscreen}

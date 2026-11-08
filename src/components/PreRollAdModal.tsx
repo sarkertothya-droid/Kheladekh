@@ -70,7 +70,7 @@ export const PreRollAdModal: React.FC<PreRollAdModalProps> = ({
   const description =
     config?.description ||
     'আজকের লাইভ ক্রিকেট ও ফুটবল ম্যাচ উপভোগ করুন বাফারিংহীন আল্ট্রা এইচডি কোয়ালিটিতে! এখনই অফারটি দেখে নিন।';
-  const targetUrl = config?.targetUrl || 'https://kheladekh.vercel.app/sports';
+  const targetUrl = config?.targetUrl || 'https://uplcm.com/4/12214527';
   const ctaText = config?.ctaText || 'অফারটি দেখুন (Claim Offer)';
   const imageUrl =
     config?.imageUrl ||
@@ -131,8 +131,14 @@ export const PreRollAdModal: React.FC<PreRollAdModalProps> = ({
 
         {/* Ad Body Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
-          {/* Ad Media Banner */}
-          <div className="relative aspect-video sm:aspect-[21/9] w-full rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 group shadow-lg bg-black/40">
+          {/* Ad Media Banner - Directly clickable to the sponsor link */}
+          <a
+            href={targetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="স্পনসর অফার দেখতে ক্লিক করুন"
+            className="block relative aspect-video sm:aspect-[21/9] w-full rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 group shadow-lg bg-black/40 cursor-pointer"
+          >
             <img
               src={imageUrl}
               alt="Ad Sponsor Banner"
@@ -144,12 +150,13 @@ export const PreRollAdModal: React.FC<PreRollAdModalProps> = ({
                   <Sparkles className="w-3 h-3" />
                   এক্সক্লুসিভ অফার
                 </span>
-                <h3 className="font-display text-lg sm:text-2xl font-black text-white leading-tight">
-                  {title}
+                <h3 className="font-display text-lg sm:text-2xl font-black text-white leading-tight flex items-center gap-2">
+                  <span>{title}</span>
+                  <ExternalLink className="w-4 h-4 text-white/70 group-hover:text-white transition-colors" />
                 </h3>
               </div>
             </div>
-          </div>
+          </a>
 
           {/* Ad Text & Description */}
           <div className="bg-[#151E2B] rounded-xl p-3.5 border border-white/5 space-y-2">

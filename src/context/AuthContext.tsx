@@ -65,12 +65,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(newProfile);
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, userPath);
+      console.warn('Failed to load Firestore profile, using local fallback:', error);
+      // Fallback local profile so user experience is not blocked
+      const fallbackProfile: UserProfile = {
+        uid: firebaseUser.uid,
+        displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Sports Fan',
+        email: firebaseUser.email || '',
+        photoURL: firebaseUser.photoURL || '',
+        favoriteSports: ['football', 'cricket'],
+        favoriteTeams: [],
+        savedEvents: [],
+        notificationPreferences: {
+          eventReminders: true,
+          newEvents: true,
+          newsAlerts: false,
+        },
+        createdAt: new Date().toISOString(),
+      };
+      setProfile(fallbackProfile);
     }
 
-    // Check admin status
-    if (firebaseUser.email === ADMIN_EMAIL && firebaseUser.emailVerified) {
+    // Check admin status (supports both Google sign-in and Email/Password sign-in)
+    const isOwnerEmail = firebaseUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    if (isOwnerEmail) {
       setIsAdmin(true);
+      // Ensure admin document exists in /admins collection
+      try {
+        await setDoc(doc(db, 'admins', firebaseUser.uid), {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          role: 'ADMIN',
+          grantedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (err) {
+        console.warn('Admin record sync note:', err);
+      }
     } else {
       try {
         const adminSnap = await getDoc(doc(db, 'admins', firebaseUser.uid));

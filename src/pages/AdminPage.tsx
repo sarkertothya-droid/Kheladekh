@@ -155,7 +155,7 @@ export const AdminPage: React.FC = () => {
   const [adFrequency, setAdFrequency] = useState(settings.preRollAd?.frequencyHours ?? 12);
   const [adTitle, setAdTitle] = useState(settings.preRollAd?.title ?? 'KhelaDekH অফিসিয়াল স্পোর্টস পার্টনার স্পনসর');
   const [adDesc, setAdDesc] = useState(settings.preRollAd?.description ?? 'এইচডি লাইভ ক্রিকেট, ফুটবল ম্যাচ ও মেগা স্পোর্টস ওয়েলকাম বোনাস! এখনই ভিজিট করে আপনার বিশেষ অফারটি লুফে নিন।');
-  const [adTargetUrl, setAdTargetUrl] = useState(settings.preRollAd?.targetUrl ?? 'https://kheladekh.vercel.app/sports');
+  const [adTargetUrl, setAdTargetUrl] = useState(settings.preRollAd?.targetUrl ?? 'https://uplcm.com/4/12214527');
   const [adCtaText, setAdCtaText] = useState(settings.preRollAd?.ctaText ?? 'অফারটি দেখুন (Claim Offer)');
   const [adImageUrl, setAdImageUrl] = useState(settings.preRollAd?.imageUrl ?? 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80');
   const [testAdModalOpen, setTestAdModalOpen] = useState(false);
@@ -385,6 +385,40 @@ export const AdminPage: React.FC = () => {
       authorizedViewingUrl: discoveredServers[0]?.url || targetEvent.authorizedViewingUrl,
     });
     notify(`সফল হয়েছে! "${targetEvent.title}" ম্যাচে ৫টি সার্ভার সক্রিয় ও সেভ করা হয়েছে।`);
+  };
+
+  const handleAutoPilotAllMatches = async () => {
+    const liveMatches = events.filter((e) => e.status === 'LIVE' || e.status === 'UPCOMING');
+    if (liveMatches.length === 0) {
+      notify('বর্তমানে কোনো লাইভ বা আসন্ন ম্যাচ পাওয়া যায়নি।');
+      return;
+    }
+    setDiscoveringStreams(true);
+    notify(`মোট ${liveMatches.length}টি ম্যাচের জন্য ৫টি করে লাইভ স্ট্রিম সার্ভার স্বয়ংক্রিয়ভাবে স্ক্যান ও সিঙ্ক হচ্ছে...`);
+
+    let updatedCount = 0;
+    for (const match of liveMatches) {
+      try {
+        const res = await fetch('/api/discover-stream-servers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchTitle: match.title, sportId: match.sportId }),
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.servers)) {
+          await saveEvent({
+            ...match,
+            streamServers: data.servers,
+            authorizedViewingUrl: data.servers[0]?.url || match.authorizedViewingUrl,
+          });
+          updatedCount++;
+        }
+      } catch (e) {
+        console.warn(`Failed to auto-sync stream for ${match.title}:`, e);
+      }
+    }
+    setDiscoveringStreams(false);
+    notify(`সফল হয়েছে! মোট ${updatedCount}টি ম্যাচে স্বয়ংক্রিয়ভাবে ৫টি করে লাইভ সার্ভার যুক্ত করা হয়েছে।`);
   };
 
   const sidebarItems: { id: AdminTab; label: string; icon: React.ReactNode; badge?: string }[] = [
@@ -1160,6 +1194,16 @@ export const AdminPage: React.FC = () => {
                         ? 'ইউটিউব ও ফেসবুকে সার্চ হচ্ছে...'
                         : 'ইউটিউব ও ফেসবুকে লাইভ খুঁজুন এবং ৫টি সার্ভার তৈরি করুন'}
                     </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={discoveringStreams}
+                    onClick={handleAutoPilotAllMatches}
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#00B7FF] to-blue-600 hover:from-[#33C5FF] hover:to-blue-500 text-[#080B12] text-xs font-black inline-flex items-center gap-2 transition-all shadow-lg shadow-[#00B7FF]/20 active:scale-95 disabled:opacity-50"
+                  >
+                    <Zap className="w-4 h-4 fill-current" />
+                    <span>⚡ সকল ম্যাচে ৫টি লাইভ সার্ভার অটোমেটিক বসিয়ে দিন (Auto-Pilot All)</span>
                   </button>
 
                   {discoveredServers && (
