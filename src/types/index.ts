@@ -184,3 +184,17 @@ export interface ActiveSession {
   userId?: string | null;
   userName?: string;
 }
+
+export interface LiveTvChannel {
+  id: string;
+  name: string;
+  channelId?: string;
+  category: string;
+  country?: string;
+  logo?: string | null;
+  streamUrl: string;
+  quality?: string;
+  isLive: boolean;
+  featured?: boolean;
+}
+

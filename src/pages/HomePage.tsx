@@ -80,11 +80,18 @@ export const HomePage: React.FC = () => {
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <Link
+              to="/tv"
+              className="min-h-[44px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 text-white text-sm font-bold hover:brightness-110 transition-all inline-flex items-center gap-2 whitespace-nowrap shrink-0 shadow-lg shadow-red-600/30 ring-1 ring-white/20"
+            >
+              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+              Live TV (১০০০+ চ্যানেল)
+            </Link>
+            <Link
               to="/live"
               className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#00B7FF] text-[#080B12] text-sm font-bold hover:bg-[#33C5FF] transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0"
             >
               <Radio className="w-4 h-4" />
-              Watch Live
+              Watch Live Matches
             </Link>
             <Link
               to="/sports"
@@ -202,6 +209,36 @@ export const HomePage: React.FC = () => {
             <p className="text-sm font-medium text-white">No upcoming fixtures scheduled.</p>
           </div>
         )}
+      </section>
+
+      {/* 1000+ Live TV Channels Feature Spotlight Banner */}
+      <section className="relative rounded-3xl overflow-hidden border border-red-500/30 bg-gradient-to-r from-[#1B0F15] via-[#151E2B] to-[#0A1926] p-6 sm:p-8 shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-xl">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-red-500/20 text-red-500">
+                <Radio className="w-4 h-4 animate-pulse" />
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-400 font-mono text-xs font-bold uppercase tracking-wider">
+                নতুন সংযোজন: ১০০০+ লাইভ টিভি চ্যানেল
+              </span>
+            </div>
+            <h2 className="font-display text-2xl sm:text-3xl font-black text-white tracking-tight">
+              কোনো ভিডিও নয়, সার্বক্ষণিক লাইভ স্ট্রিমিং ও টিভি চ্যানেল
+            </h2>
+            <p className="text-xs sm:text-sm text-[#CBD5E1] leading-relaxed">
+              দেশি-বিদেশি খেলাধুলার চ্যানেল, স্পোর্টস নেটওয়ার্ক, লাইভ নিউজ, বিনোদন ও সিনেমার সরাসরি ব্রডকাস্ট। ক্যাটাগরিভিত্তিক ভাগ করা রয়েছে।
+            </p>
+          </div>
+
+          <Link
+            to="/tv"
+            className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 to-amber-600 hover:brightness-110 text-white font-black text-sm inline-flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-red-600/30 ring-1 ring-white/20 self-start md:self-auto shrink-0"
+          >
+            <span>লাইভ টিভি খুলুন (Live TV)</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
       </section>
 
       {/* Popular Sports */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Trophy, Radio, Newspaper, User, Search } from 'lucide-react';
+import { Home, Trophy, Radio, Newspaper, User, Search, Tv } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { NotificationDropdown } from './NotificationDropdown';
 
@@ -56,6 +56,15 @@ export const Navbar: React.FC = () => {
               }`}
             >
               Live
+            </Link>
+            <Link
+              to="/tv"
+              className={`whitespace-nowrap shrink-0 transition-colors hover:text-white flex items-center gap-1.5 ${
+                isActive('/tv') ? 'text-red-400 font-bold' : ''
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>Live TV (১০০০+)</span>
             </Link>
             <Link
               to="/upcoming"
@@ -119,7 +128,7 @@ export const Navbar: React.FC = () => {
         aria-label="Mobile Navigation"
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#101722]/95 backdrop-blur-md border-t border-white/10 pb-safe"
       >
-        <div className="grid grid-cols-5 items-center h-14">
+        <div className="grid grid-cols-6 items-center h-14">
           <Link
             to="/"
             className={`min-h-[44px] flex flex-col items-center justify-center transition-colors ${
@@ -146,6 +155,16 @@ export const Navbar: React.FC = () => {
           >
             <Radio className="w-5 h-5" />
             <span className="text-[10px] font-medium tracking-tight mt-0.5">Live</span>
+          </Link>
+          <Link
+            to="/tv"
+            className={`min-h-[44px] flex flex-col items-center justify-center transition-colors relative ${
+              isActive('/tv') ? 'text-red-400 font-bold' : 'text-[#A5B1C2]'
+            }`}
+          >
+            <span className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <Tv className="w-5 h-5" />
+            <span className="text-[10px] font-medium tracking-tight mt-0.5">Live TV</span>
           </Link>
           <Link
             to="/news"

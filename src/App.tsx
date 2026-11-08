@@ -23,6 +23,7 @@ import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { LegalPage } from './pages/LegalPage';
 import { AdminPage } from './pages/AdminPage';
+import { TvPage } from './pages/TvPage';
 
 function GlobalPresenceTracker() {
   const location = useLocation();
@@ -89,6 +90,7 @@ export default function App() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/sports" element={<SportsPage />} />
                   <Route path="/live" element={<LiveEventsPage />} />
+                  <Route path="/tv" element={<TvPage />} />
                   <Route path="/upcoming" element={<UpcomingEventsPage />} />
                   <Route path="/events/:slug" element={<EventDetailsPage />} />
                   <Route path="/news" element={<NewsPage />} />
