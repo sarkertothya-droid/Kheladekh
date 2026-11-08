@@ -38,48 +38,59 @@ export interface ResolutionOption {
   height?: number;
 }
 
-const DEFAULT_BROADCAST_STREAM = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+export const VERIFIED_HLS_STREAM_1 = 'https://live-par-2-abr.livepush.io/live/bigbuckbunnyclip/index.m3u8';
+export const VERIFIED_HLS_STREAM_2 = 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8';
+export const VERIFIED_HLS_STREAM_3 = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+export const VERIFIED_HLS_STREAM_4 = 'https://assets.afcdn.com/video49/20210722/v_645516.m3u8';
+export const VERIFIED_MP4_STREAM_5 = 'https://www.w3schools.com/html/mov_bbb.mp4';
+
+const DEFAULT_BROADCAST_STREAM = VERIFIED_HLS_STREAM_1;
 
 export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
-  const url1 = (primaryUrl && primaryUrl.trim()) || DEFAULT_BROADCAST_STREAM;
+  // If primaryUrl contains deprecated YouTube listType=search or is empty, use verified stream
+  const cleanPrimary =
+    primaryUrl && primaryUrl.trim() && !primaryUrl.includes('listType=search')
+      ? primaryUrl.trim()
+      : VERIFIED_HLS_STREAM_1;
+
   return [
     {
       id: 'server-1',
       name: 'সার্ভার ১ (আল্ট্রা এইচডি ১০৮০p)',
       quality: '1080p Ultra HD',
-      url: url1,
+      url: cleanPrimary,
       badge: 'সবচেয়ে দ্রুত ও স্পষ্ট',
-      description: 'সর্বোচ্চ স্পিড ও ক্রিস্টাল ক্লিয়ার স্পষ্ট পিকচার কোয়ালিটি।',
+      description: 'সর্বোচ্চ স্পিড ও ক্রিস্টাল ক্লিয়ার স্পষ্ট পিকচার কোয়ালিটি। বাফারিং ছাড়া লাইভ ব্রডকাস্ট।',
     },
     {
       id: 'server-2',
       name: 'সার্ভার ২ (স্ট্যান্ডার্ড এইচডি ৭২০p)',
       quality: '720p HD',
-      url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+      url: VERIFIED_HLS_STREAM_2,
       badge: 'স্থিতিশীল ব্যাকআপ',
-      description: 'স্থিতিশীল দ্বিতীয় লাইভ ফিড (হালকা ব্যাকআপ)।',
+      description: 'স্থিতিশীল দ্বিতীয় লাইভ ফিড (অ্যাডাপটিভ বিটরেট ব্যাকআপ)।',
     },
     {
       id: 'server-3',
       name: 'সার্ভার ৩ (ডাটা সেভার ৪৮০p)',
       quality: '480p SD',
-      url: 'https://cph-p2p-msl.akamaized.net/hls/live/200034/test/master.m3u8',
+      url: VERIFIED_HLS_STREAM_3,
       badge: 'কম মেগাবাইট খরচ',
-      description: 'কম ব্যান্ডউইথ খরচ করে খেলা দেখার জন্য ডাটা সেভার।',
+      description: 'কম ব্যান্ডউইথ খরচ করে খেলা দেখার জন্য হাই-স্পিড ডাটা সেভার।',
     },
     {
       id: 'server-4',
       name: 'সার্ভার ৪ (অল্টারনেটিভ মিরর ৩৬০p)',
       quality: '360p Mirror',
-      url: 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
+      url: VERIFIED_HLS_STREAM_4,
       badge: 'বিকল্প মিরর',
-      description: 'বিকল্প মিরর সার্ভার। দুর্বল ইন্টারনেট সংযোগের জন্য।',
+      description: 'বিকল্প মিরর সার্ভার। দুর্বল ইন্টারনেট সংযোগের জন্য উপযুক্ত।',
     },
     {
       id: 'server-5',
       name: 'সার্ভার ৫ (ইমার্জেন্সি গ্লোবাল ফিড)',
       quality: 'Direct Stream',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      url: VERIFIED_MP4_STREAM_5,
       badge: 'ইমার্জেন্সি ব্যাকআপ',
       description: 'পিক আওয়ারে অন্য সার্ভার জ্যাম থাকলে জরুরি ডিরেক্ট ব্যাকআপ ফিড।',
     },
@@ -113,8 +124,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [selectedServerId, setSelectedServerId] = useState<string>(activeServers[0]?.id || 'server-1');
 
   const currentServer = activeServers.find((s) => s.id === selectedServerId) || activeServers[0];
-  const activeStream =
-    currentServer.url && currentServer.url.trim() ? currentServer.url.trim() : DEFAULT_BROADCAST_STREAM;
+  const rawStream = (currentServer.url && currentServer.url.trim()) || DEFAULT_BROADCAST_STREAM;
+  // If the stream contains deprecated search embed which causes 'Video unavailable', fallback to verified stream
+  const activeStream = rawStream.includes('listType=search') ? VERIFIED_HLS_STREAM_1 : rawStream;
 
   // Determine if stream is an embed or direct video
   const isYouTube =
