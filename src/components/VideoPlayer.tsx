@@ -119,12 +119,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Active servers configuration (defaults to 5 tiers if not configured)
-  const activeServers = servers && servers.length > 0 ? servers : buildDefaultServers(src);
+  // Active servers configuration: ensure a full 5-tier server setup is ALWAYS available
+  const baseDefaults = buildDefaultServers(src);
+  const activeServers: StreamServer[] = React.useMemo(() => {
+    if (servers && servers.length >= 5) {
+      return servers;
+    }
+    if (servers && servers.length > 0) {
+      // Merge custom servers with verified defaults for missing servers
+      return baseDefaults.map((def, idx) => servers[idx] || def);
+    }
+    return baseDefaults;
+  }, [servers, baseDefaults]);
+
   const [selectedServerId, setSelectedServerId] = useState<string>(activeServers[0]?.id || 'server-1');
 
+  // Keep selected server synced if servers prop updates
+  useEffect(() => {
+    if (activeServers.length > 0 && !activeServers.some(s => s.id === selectedServerId)) {
+      setSelectedServerId(activeServers[0].id);
+    }
+  }, [activeServers, selectedServerId]);
+
   const currentServer = activeServers.find((s) => s.id === selectedServerId) || activeServers[0];
-  const rawStream = (currentServer.url && currentServer.url.trim()) || DEFAULT_BROADCAST_STREAM;
+  const rawStream = (currentServer?.url && currentServer.url.trim()) || DEFAULT_BROADCAST_STREAM;
   // If the stream contains deprecated search embed which causes 'Video unavailable', fallback to verified stream
   const activeStream = rawStream.includes('listType=search') ? VERIFIED_HLS_STREAM_1 : rawStream;
 
@@ -541,12 +559,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // If Third-Party Embed (YouTube, Facebook, etc.)
   if (!isDirectVideo) {
     let embedUrl = activeStream;
+    let isYt = false;
+    let ytId = '';
+
     if (activeStream.includes('youtube.com/watch?v=')) {
-      const videoId = new URL(activeStream).searchParams.get('v');
-      if (videoId) embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=0&rel=0`;
+      try {
+        const vid = new URL(activeStream).searchParams.get('v');
+        if (vid) {
+          ytId = vid;
+          embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=0&rel=0&playsinline=1`;
+          isYt = true;
+        }
+      } catch {}
     } else if (activeStream.includes('youtu.be/')) {
-      const videoId = activeStream.split('youtu.be/')[1]?.split('?')[0];
-      if (videoId) embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=0&rel=0`;
+      const vid = activeStream.split('youtu.be/')[1]?.split('?')[0]?.split('/')[0];
+      if (vid) {
+        ytId = vid;
+        embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=0&rel=0&playsinline=1`;
+        isYt = true;
+      }
+    } else if (activeStream.includes('youtube.com/live/')) {
+      const vid = activeStream.split('/live/')[1]?.split('?')[0]?.split('/')[0];
+      if (vid) {
+        ytId = vid;
+        embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=0&rel=0&playsinline=1`;
+        isYt = true;
+      }
+    } else if (activeStream.includes('youtube.com/embed/')) {
+      isYt = true;
     }
 
     return (
@@ -564,8 +604,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             className="w-full h-full border-0"
           />
 
-          {/* Quick External Fallback Button */}
+          {/* Quick External & Direct Switch Toolbar */}
           <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            {isYt && (
+              <a
+                href={
+                  ytId
+                    ? `https://www.youtube.com/watch?v=${ytId}`
+                    : activeStream
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-600 backdrop-blur-md border border-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg active:scale-95"
+                title="সরাসরি ইউটিউব অ্যাপ অথবা ট্যাবে লাইভ খেলা দেখুন"
+              >
+                <Radio className="w-3.5 h-3.5 text-white animate-pulse" />
+                <span>ইউটিউবে সরাসরি দেখুন</span>
+              </a>
+            )}
             <a
               href={activeStream}
               target="_blank"
