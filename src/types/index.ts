@@ -186,6 +186,7 @@ export interface ActiveSession {
 }
 
 export interface LiveTvChannel {
+  channelNumber: number;
   id: string;
   name: string;
   channelId?: string;
@@ -196,5 +197,6 @@ export interface LiveTvChannel {
   quality?: string;
   isLive: boolean;
   featured?: boolean;
+  language?: string;
 }
 

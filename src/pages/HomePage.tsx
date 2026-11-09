@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Radio, Calendar, Trophy, Newspaper, Sparkles, Flame } from 'lucide-react';
+import { ArrowRight, Radio, Calendar, Trophy, Newspaper, Sparkles, Flame, CheckCircle2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { HERO_IMAGE } from '../data/seedData';
 import { EventCard } from '../components/EventCard';
 import { NewsCard } from '../components/NewsCard';
+import { AutoSyncBar } from '../components/AutoSyncBar';
+import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
 
 export const HomePage: React.FC = () => {
   const { events, sports, news, loading } = useData();
@@ -18,11 +20,15 @@ export const HomePage: React.FC = () => {
 
   const liveEvents = filteredEvents.filter((e) => e.status === 'LIVE');
   const upcomingEvents = filteredEvents.filter((e) => e.status === 'UPCOMING');
+  const finishedEvents = filteredEvents.filter((e) => e.status === 'FINISHED');
   const allLive = publishedEvents.filter((e) => e.status === 'LIVE');
   const publishedNews = news.filter((n) => n.status === 'PUBLISHED').slice(0, 3);
 
   return (
     <div className="space-y-10 sm:space-y-12">
+      {/* 5-Minute Auto-Sync Real-Time Notification Bar */}
+      <AutoSyncBar />
+
       {/* Live Match Ticker Tape */}
       {allLive.length > 0 && (
         <div className="bg-[#101722] border border-white/10 rounded-2xl p-2.5 flex items-center gap-3 overflow-hidden shadow-lg">
@@ -103,6 +109,9 @@ export const HomePage: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* Adsterra Mobile & Desktop 320x50 Ad Placement */}
+      <AdsterraBanner320x50 />
 
       {/* Multi-Sport Filter Control Bar */}
       <div className="flex items-center gap-2 p-1.5 bg-[#101722] rounded-2xl border border-white/10 overflow-x-auto no-scrollbar">
@@ -211,6 +220,39 @@ export const HomePage: React.FC = () => {
         )}
       </section>
 
+      {/* Finished / Ended Matches Section */}
+      {finishedEvents.length > 0 && (
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="p-1.5 rounded-xl bg-zinc-800 text-zinc-300 border border-white/10">
+                <CheckCircle2 className="w-5 h-5 text-[#16D98A]" />
+              </span>
+              <div>
+                <h2 className="font-display text-xl sm:text-2xl font-bold text-white">
+                  সমাপ্ত ম্যাচের ফলাফল (Recent Match Results / Ended)
+                </h2>
+                <p className="text-xs text-[#A5B1C2]">
+                  চূড়ান্ত ফলাফল ও স্কোরসহ ইতিপূর্বে শেষ হওয়া ম্যাচসমূহ
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/live"
+              className="text-xs font-semibold text-[#00B7FF] hover:underline inline-flex items-center gap-1"
+            >
+              সকল ফলাফল <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {finishedEvents.slice(0, 6).map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* 1000+ Live TV Channels Feature Spotlight Banner */}
       <section className="relative rounded-3xl overflow-hidden border border-red-500/30 bg-gradient-to-r from-[#1B0F15] via-[#151E2B] to-[#0A1926] p-6 sm:p-8 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -240,6 +282,9 @@ export const HomePage: React.FC = () => {
           </Link>
         </div>
       </section>
+
+      {/* Adsterra Native Banner (4 Images in a row) */}
+      <AdsterraNativeBanner />
 
       {/* Popular Sports */}
       <section>

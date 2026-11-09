@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Maximize, Sliders, Play, Radio } from 'lucide-react';
+import { Trophy, Maximize, Sliders, Play, Radio, CheckCircle2, Clock } from 'lucide-react';
 import { SportEvent } from '../types';
 import { useData } from '../context/DataContext';
 
@@ -26,6 +26,9 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
   const sport = sports.find((s) => s.id === event.sportId);
   const competition = competitions.find((c) => c.id === event.competitionId);
 
+  const isFinished = event.status === 'FINISHED';
+  const isLive = event.status === 'LIVE';
+
   const handleCardClick = () => {
     navigate(`/events/${event.slug}`);
   };
@@ -50,7 +53,13 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
   return (
     <div
       onClick={handleCardClick}
-      className="group relative block bg-[#151E2B] rounded-2xl overflow-hidden border border-white/10 hover:border-[#00B7FF]/50 transition-all cursor-pointer shadow-lg hover:shadow-[#00B7FF]/10"
+      className={`group relative block rounded-2xl overflow-hidden border transition-all cursor-pointer shadow-lg ${
+        isFinished
+          ? 'bg-[#111723] border-white/10 hover:border-white/25 hover:bg-[#141b29]'
+          : isLive
+          ? 'bg-[#151E2B] border-white/10 hover:border-[#00B7FF]/60 hover:shadow-[#00B7FF]/15'
+          : 'bg-[#151E2B] border-white/10 hover:border-white/30'
+      }`}
     >
       {/* Thumbnail Area */}
       <div className="relative aspect-[16/10] bg-[#101722] overflow-hidden">
@@ -61,7 +70,9 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+            className={`w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300 ${
+              isFinished ? 'grayscale-[20%] brightness-90' : ''
+            }`}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-br from-[#101722] to-[#151E2B]">
@@ -76,14 +87,20 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
 
         {/* Live Badge Top-Left */}
         <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
-          {event.status === 'LIVE' ? (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#16D98A]/25 backdrop-blur-md border border-[#16D98A]/40 text-[#16D98A] text-[10px] font-mono font-bold tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#16D98A] animate-pulse" />
-              LIVE NOW
+          {isLive ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600/90 backdrop-blur-md border border-red-400/40 text-white text-[10px] font-mono font-black tracking-wider shadow-lg shadow-red-600/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+              সরাসরি লাইভ (LIVE)
+            </span>
+          ) : isFinished ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/90 backdrop-blur-md border border-white/20 text-zinc-300 text-[10px] font-mono font-bold tracking-wider shadow-md">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#16D98A]" />
+              ম্যাচ সমাপ্ত (FINISHED / END)
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white/90 text-[10px] font-mono font-semibold">
-              {event.status}
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-md border border-white/10 text-white/90 text-[10px] font-mono font-semibold">
+              <Clock className="w-3 h-3 text-[#00B7FF]" />
+              আসন্ন (UPCOMING)
             </span>
           )}
         </div>
@@ -166,7 +183,15 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
             <span className="truncate">{competition?.name || event.competitionId}</span>
           </div>
           {event.scoreSummary && (
-            <span className="text-[#16D98A] font-mono text-xs font-bold shrink-0">
+            <span
+              className={`font-mono text-xs font-bold shrink-0 px-2 py-0.5 rounded-lg ${
+                isFinished
+                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                  : isLive
+                  ? 'bg-[#16D98A]/20 text-[#16D98A] border border-[#16D98A]/30'
+                  : 'bg-white/10 text-white/90'
+              }`}
+            >
               {event.scoreSummary}
             </span>
           )}
@@ -180,10 +205,17 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
           <span>
             {event.eventDate} · {event.eventTime}
           </span>
-          <span className="inline-flex items-center gap-1 text-[#00B7FF] font-semibold text-xs group-hover:translate-x-0.5 transition-transform">
-            <Play className="w-3 h-3 fill-current" />
-            Watch Match
-          </span>
+          {isFinished ? (
+            <span className="inline-flex items-center gap-1.5 text-zinc-300 group-hover:text-white font-semibold text-xs transition-colors">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#16D98A]" />
+              ফলাফল ও হাইলাইটস
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[#00B7FF] font-semibold text-xs group-hover:translate-x-0.5 transition-transform">
+              <Play className="w-3 h-3 fill-current" />
+              সরাসরি দেখুন (Watch Live)
+            </span>
+          )}
         </div>
       </div>
     </div>

@@ -70,7 +70,9 @@ export const PreRollAdModal: React.FC<PreRollAdModalProps> = ({
   const description =
     config?.description ||
     'আজকের লাইভ ক্রিকেট ও ফুটবল ম্যাচ উপভোগ করুন বাফারিংহীন আল্ট্রা এইচডি কোয়ালিটিতে! এখনই অফারটি দেখে নিন।';
-  const targetUrl = config?.targetUrl || 'https://uplcm.com/4/12214527';
+  const targetUrl =
+    config?.targetUrl ||
+    'https://www.profitableratecpmnetwork.com/ezzarzguc?key=b03d0150c9e5f312e521740071ad1243';
   const ctaText = config?.ctaText || 'অফারটি দেখুন (Claim Offer)';
   const imageUrl =
     config?.imageUrl ||

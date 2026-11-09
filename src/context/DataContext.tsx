@@ -47,6 +47,8 @@ interface DataContextType {
   isFirestoreConnected: boolean;
   autoSyncing: boolean;
   lastAutoSyncTime: string | null;
+  nextSyncSeconds: number;
+  autoSyncIntervalSeconds: number;
   syncLiveSportsFromGoogle: (silent?: boolean) => Promise<void>;
   toggleFavoriteSport: (sportId: string) => Promise<void>;
   toggleFavoriteTeam: (teamId: string) => Promise<void>;
@@ -72,6 +74,8 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+const AUTO_SYNC_INTERVAL_SEC = 300; // Exactly 5 minutes (300 seconds) as requested
+
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile, refreshProfile } = useAuth();
   const [sports, setSports] = useState<Sport[]>(INITIAL_SPORTS);
@@ -85,11 +89,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isFirestoreConnected, setIsFirestoreConnected] = useState(false);
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [lastAutoSyncTime, setLastAutoSyncTime] = useState<string | null>(null);
+  const [nextSyncSeconds, setNextSyncSeconds] = useState<number>(AUTO_SYNC_INTERVAL_SEC);
 
-  // Automated Sports Feed Sync from server (Google Search grounded)
+  // Automated Sports Feed Sync from server (Google Search grounded) - 5 minute cycle
   const syncLiveSportsFromGoogle = async (silent = true) => {
     try {
       setAutoSyncing(true);
+      setNextSyncSeconds(AUTO_SYNC_INTERVAL_SEC);
       const res = await fetch('/api/sports/auto-feed');
       if (!res.ok) throw new Error('Auto feed request failed');
       const json = await res.json();
@@ -158,12 +164,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             eventDate: item.eventDate || new Date().toISOString().split('T')[0],
             eventTime: item.eventTime || 'Live',
             timezone: item.timezone || 'UTC',
-            status: (item.status === 'LIVE' || item.status === 'UPCOMING' || item.status === 'FINISHED') ? item.status : 'LIVE',
+            status: (item.status === 'FINISHED' || item.status === 'UPCOMING' || item.status === 'LIVE') ? item.status : 'LIVE',
             published: true,
             featured: item.status === 'LIVE',
             authorizedViewingUrl: item.authorizedViewingUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
             thumbnailUrl: defaultThumb,
-            scoreSummary: item.scoreSummary || (item.status === 'LIVE' ? 'In Progress' : ''),
+            scoreSummary: item.scoreSummary || (item.status === 'LIVE' ? 'In Progress' : item.status === 'FINISHED' ? 'FT: Concluded' : ''),
             updatedAt: new Date().toISOString(),
           };
 
@@ -177,17 +183,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Real-time 1-second countdown ticker for exactly 5-minute (300s) auto-sync
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNextSyncSeconds((prev) => {
+        if (prev <= 1) {
+          syncLiveSportsFromGoogle(true);
+          return AUTO_SYNC_INTERVAL_SEC;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Auto-transition past events to FINISHED if their date is before today
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    events.forEach((ev) => {
+      if (ev.status === 'LIVE' && ev.eventDate && ev.eventDate < todayStr) {
+        const updated: SportEvent = {
+          ...ev,
+          status: 'FINISHED',
+          featured: false,
+          scoreSummary: ev.scoreSummary?.startsWith('FT') ? ev.scoreSummary : `FT: ${ev.scoreSummary || 'Ended'}`,
+          updatedAt: new Date().toISOString(),
+        };
+        setDoc(doc(db, 'events', ev.id), updated, { merge: true }).catch(() => {});
+      }
+    });
+  }, [events.length]);
+
   useEffect(() => {
     let mounted = true;
     testFirestoreConnection().then((connected) => {
       if (mounted) setIsFirestoreConnected(connected);
     });
 
-    // Run initial auto-sync once connected, then every 3 minutes
+    // Run initial auto-sync once connected
     syncLiveSportsFromGoogle(true);
-    const intervalId = setInterval(() => {
-      syncLiveSportsFromGoogle(true);
-    }, 3 * 60 * 1000); // every 3 minutes
 
     const unsubSports = onSnapshot(
       collection(db, 'sports'),
@@ -262,7 +297,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       mounted = false;
-      clearInterval(intervalId);
       unsubSports();
       unsubTeams();
       unsubComps();
@@ -531,6 +565,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isFirestoreConnected,
         autoSyncing,
         lastAutoSyncTime,
+        nextSyncSeconds,
+        autoSyncIntervalSeconds: AUTO_SYNC_INTERVAL_SEC,
         syncLiveSportsFromGoogle,
         toggleFavoriteSport,
         toggleFavoriteTeam,

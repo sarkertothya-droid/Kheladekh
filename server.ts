@@ -11,6 +11,84 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json());
 
+// ==========================================
+// ROBUST SECURITY SYSTEM SUITE (Server-Side)
+// ==========================================
+
+// 1. Enterprise HTTP Security Headers Middleware
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+
+// 2. Anti-DDoS & Sliding-Window Rate Limiter for all API routes
+const ipRequestCounts = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1-minute window
+const MAX_REQUESTS_PER_MINUTE = 60; // 60 requests/min per IP
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+
+  const clientIp =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    '127.0.0.1';
+  const now = Date.now();
+  const current = ipRequestCounts.get(clientIp);
+
+  if (!current || now > current.resetTime) {
+    ipRequestCounts.set(clientIp, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return next();
+  }
+
+  if (current.count >= MAX_REQUESTS_PER_MINUTE) {
+    const retryAfter = Math.ceil((current.resetTime - now) / 1000);
+    res.setHeader('Retry-After', retryAfter.toString());
+    return res.status(429).json({
+      success: false,
+      error: 'অতিরিক্ত রিকোয়েস্ট পাঠানো হয়েছে। দয়া করে একটু পরে চেষ্টা করুন (Rate limit exceeded).',
+      retryAfterSeconds: retryAfter,
+    });
+  }
+
+  current.count += 1;
+  next();
+});
+
+// 3. Recursive Input Sanitization & Anti-XSS Payload Filter
+const sanitizePayload = (val: any): any => {
+  if (typeof val === 'string') {
+    return val
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/javascript:/gi, '')
+      .replace(/on\w+\s*=/gi, '')
+      .trim();
+  }
+  if (Array.isArray(val)) {
+    return val.map(sanitizePayload);
+  }
+  if (val !== null && typeof val === 'object') {
+    const cleaned: any = {};
+    for (const key of Object.keys(val)) {
+      cleaned[key] = sanitizePayload(val[key]);
+    }
+    return cleaned;
+  }
+  return val;
+};
+
+app.use((req, _res, next) => {
+  if (req.body && typeof req.body === 'object') {
+    req.body = sanitizePayload(req.body);
+  }
+  next();
+});
+
 // Initialize Google GenAI client (server-side only)
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -21,12 +99,12 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Cache in-memory for 3 minutes to avoid hitting rate limits when multiple clients poll
+// In-memory cache for exactly 5 minutes as requested by the user
 let cachedLiveFeed: any = null;
 let lastFetchTime = 0;
-const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000; // Exactly 5 minutes (300,000 ms)
 
-// Dynamic multi-sport backup catalog if rate-limited or quota exceeded
+// Dynamic multi-sport backup catalog with LIVE, UPCOMING, and FINISHED (ENDED) matches
 function getDynamicMultiSportFeed() {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
@@ -63,21 +141,6 @@ function getDynamicMultiSportFeed() {
       teamB: { name: "FC Barcelona", shortName: "FCB", country: "Spain" }
     },
     {
-      id: `football-mci-liv-${dateStr}`,
-      title: "Manchester City vs Liverpool",
-      sportId: "football",
-      sportName: "Football",
-      competition: "Premier League",
-      status: "UPCOMING",
-      eventDate: dateStr,
-      eventTime: "16:30",
-      timezone: "UTC",
-      scoreSummary: "Starts in 2 hours",
-      description: "Crucial top-of-the-table Premier League clash at Etihad Stadium.",
-      teamA: { name: "Manchester City", shortName: "MCI", country: "England" },
-      teamB: { name: "Liverpool", shortName: "LIV", country: "England" }
-    },
-    {
       id: `cricket-ban-sri-${dateStr}`,
       title: "Bangladesh vs Sri Lanka 2nd T20I",
       sportId: "cricket",
@@ -106,6 +169,53 @@ function getDynamicMultiSportFeed() {
       description: "Championship clash between the world's top two ranked tennis stars.",
       teamA: { name: "Carlos Alcaraz", shortName: "ALC", country: "Spain" },
       teamB: { name: "Jannik Sinner", shortName: "SIN", country: "Italy" }
+    },
+    // FINISHED (Ended) matches displaying final scores clearly:
+    {
+      id: `football-che-tot-${dateStr}`,
+      title: "Chelsea vs Tottenham Hotspur - London Derby",
+      sportId: "football",
+      sportName: "Football",
+      competition: "Premier League",
+      status: "FINISHED",
+      eventDate: dateStr,
+      eventTime: "14:00",
+      timezone: "UTC",
+      scoreSummary: "FT: 2 - 0 (Full Time)",
+      description: "Match ended. Chelsea secured 3 points at Stamford Bridge with a clean sheet.",
+      teamA: { name: "Chelsea", shortName: "CHE", country: "England" },
+      teamB: { name: "Tottenham", shortName: "TOT", country: "England" }
+    },
+    {
+      id: `cricket-ban-ire-${dateStr}`,
+      title: "Bangladesh vs Ireland 1st T20I",
+      sportId: "cricket",
+      sportName: "Cricket",
+      competition: "International T20",
+      status: "FINISHED",
+      eventDate: dateStr,
+      eventTime: "08:00",
+      timezone: "UTC",
+      scoreSummary: "FT: BAN won by 22 runs (DLS)",
+      description: "Match ended at Zahur Ahmed Chowdhury Stadium. Tigers secured victory.",
+      teamA: { name: "Bangladesh", shortName: "BAN", country: "Bangladesh" },
+      teamB: { name: "Ireland", shortName: "IRE", country: "Ireland" }
+    },
+    // UPCOMING fixtures:
+    {
+      id: `football-mci-liv-${dateStr}`,
+      title: "Manchester City vs Liverpool",
+      sportId: "football",
+      sportName: "Football",
+      competition: "Premier League",
+      status: "UPCOMING",
+      eventDate: dateStr,
+      eventTime: "16:30",
+      timezone: "UTC",
+      scoreSummary: "Kick-off 16:30 UTC",
+      description: "Crucial top-of-the-table Premier League clash at Etihad Stadium.",
+      teamA: { name: "Manchester City", shortName: "MCI", country: "England" },
+      teamB: { name: "Liverpool", shortName: "LIV", country: "England" }
     },
     {
       id: `basketball-lal-gsw-${dateStr}`,
@@ -144,8 +254,9 @@ function getDynamicMultiSportFeed() {
 }
 
 /**
- * Server endpoint to fetch live and upcoming sports matches using Google Search grounding
+ * Server endpoint to fetch live, upcoming, and finished sports matches using Google Search grounding
  * Covers Cricket, Football, Tennis, Basketball, and multi-sport disciplines.
+ * Automatically refreshed on a strict 5-minute cache cycle.
  */
 app.get('/api/sports/auto-feed', async (req, res) => {
   const force = req.query.force === 'true';
@@ -155,6 +266,8 @@ app.get('/api/sports/auto-feed', async (req, res) => {
     return res.json({
       success: true,
       source: 'cache',
+      cacheRemainingMs: Math.max(0, CACHE_TTL_MS - (now - lastFetchTime)),
+      autoSyncIntervalSeconds: 300,
       updatedAt: new Date(lastFetchTime).toISOString(),
       data: cachedLiveFeed,
     });
@@ -162,13 +275,18 @@ app.get('/api/sports/auto-feed', async (req, res) => {
 
   try {
     const todayStr = new Date().toISOString().split('T')[0];
-    const prompt = `Search for current live and upcoming major sports matches worldwide for today (${todayStr}) across multiple sports:
+    const prompt = `Search for current live, recently finished, and upcoming major sports matches worldwide for today (${todayStr}) across multiple sports:
 1. Cricket (ICC, Test, ODI, T20 leagues)
 2. Football (Champions League, Premier League, La Liga, Serie A, etc.)
 3. Basketball (NBA, EuroLeague)
 4. Tennis (Grand Slams, ATP/WTA)
 
-Return ONLY a strict JSON array of objects representing currently LIVE or UPCOMING events today. Do not include markdown codeblocks or text before/after.
+CRITICAL INSTRUCTIONS FOR STATUS:
+- "LIVE": Use ONLY for matches currently actively in-progress right now with live minute/overs.
+- "FINISHED": If a match has completed/ended, mark status as "FINISHED" and set scoreSummary to the final score starting with "FT: " (e.g. "FT: 2 - 1" or "FT: Won by 5 wkts").
+- "UPCOMING": If a match has not started yet today.
+
+Return ONLY a strict JSON array of objects. Do not include markdown codeblocks or text before/after.
 [
   {
     "id": "slug-id",
@@ -180,13 +298,13 @@ Return ONLY a strict JSON array of objects representing currently LIVE or UPCOMI
     "eventDate": "${todayStr}",
     "eventTime": "HH:MM",
     "timezone": "UTC",
-    "scoreSummary": "Current live score or time",
+    "scoreSummary": "Current live score or final score",
     "description": "Short 1 sentence match summary",
     "teamA": { "name": "Team A Name", "shortName": "TMA", "country": "Country" },
     "teamB": { "name": "Team B Name", "shortName": "TMB", "country": "Country" }
   }
 ]
-Include at least 6 real sporting events across different sports.`;
+Include at least 7 real sporting events across different sports with accurate LIVE, FINISHED, and UPCOMING statuses.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',

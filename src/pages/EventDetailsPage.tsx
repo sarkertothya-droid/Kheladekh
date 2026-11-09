@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, Bell, BellOff, Calendar, Clock, MessageSquare, Activity, BarChart3, Users, Eye, Sparkles, RefreshCw, Zap } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Calendar, Clock, MessageSquare, Activity, BarChart3, Users, Eye, Sparkles, RefreshCw, Zap, CheckCircle2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { VideoPlayer } from '../components/VideoPlayer';
@@ -156,6 +156,33 @@ export const EventDetailsPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* If Match is Finished/Ended, show clear Ended Announcement Banner */}
+      {event.status === 'FINISHED' && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#171D28] via-[#1A2332] to-[#171D28] border border-white/10 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-zinc-800 border border-white/15 text-zinc-300">
+              <CheckCircle2 className="w-5 h-5 text-[#16D98A]" />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-bold text-white">
+                  ম্যাচ আনুষ্ঠানিকভাবে সমাপ্ত হয়েছে (Match Ended)
+                </span>
+                <span className="px-2 py-0.5 rounded bg-zinc-800 text-[10px] font-mono font-bold text-zinc-300 border border-white/10">
+                  FINISHED
+                </span>
+              </div>
+              <p className="text-xs text-[#A5B1C2] mt-0.5">
+                চূড়ান্ত স্কোর: <strong className="text-white font-mono">{event.scoreSummary || 'Full Time'}</strong> · নিচে হাইলাইটস ও রেকর্ড দেখুন
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 font-mono text-xs font-bold text-amber-400 self-start sm:self-auto">
+            {event.scoreSummary || 'FT: Concluded'}
+          </span>
+        </div>
+      )}
 
       {/* Official Viewing Player with 5 Multi-bitrate Servers */}
       <VideoPlayer
