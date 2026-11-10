@@ -16,10 +16,13 @@ import {
   Flame,
   Shield,
   RefreshCw,
+  Download,
+  Smartphone,
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 import rawChannelsData from '../data/tvChannels.json';
-import { LiveTvChannel, Event } from '../types';
+import { LiveTvChannel, SportEvent } from '../types';
 import {
   VERIFIED_HLS_STREAM_1,
   VERIFIED_HLS_STREAM_2,
@@ -294,6 +297,7 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
 
 export const MultiViewGrid: React.FC = () => {
   const { events } = useData();
+  const { isInstalled, enterAppMode } = usePWAInstall();
   const liveEvents = events.filter((e) => e.published && e.status === 'LIVE');
   const allEvents = events.filter((e) => e.published);
 
@@ -313,7 +317,7 @@ export const MultiViewGrid: React.FC = () => {
       id: 'slot-1',
       title: liveEvents[0]?.title || 'T Sports Live (HD)',
       subtitle: liveEvents[0] ? 'লাইভ ম্যাচ ফিড ১' : 'খেলাধুলা চ্যানেল #১',
-      streamUrl: liveEvents[0]?.streamUrl || VERIFIED_HLS_STREAM_1,
+      streamUrl: liveEvents[0]?.authorizedViewingUrl || VERIFIED_HLS_STREAM_1,
       sourceType: liveEvents[0] ? 'match' : 'tv',
       logo: liveEvents[0]?.thumbnailUrl,
     },
@@ -321,7 +325,7 @@ export const MultiViewGrid: React.FC = () => {
       id: 'slot-2',
       title: liveEvents[1]?.title || 'GTV Live (গাজী টিভি)',
       subtitle: liveEvents[1] ? 'লাইভ ম্যাচ ফিড ২' : 'খেলাধুলা চ্যানেল #২',
-      streamUrl: liveEvents[1]?.streamUrl || VERIFIED_HLS_STREAM_2,
+      streamUrl: liveEvents[1]?.authorizedViewingUrl || VERIFIED_HLS_STREAM_2,
       sourceType: liveEvents[1] ? 'match' : 'tv',
       logo: liveEvents[1]?.thumbnailUrl,
     },
@@ -380,7 +384,7 @@ export const MultiViewGrid: React.FC = () => {
     return (
       ch.name.toLowerCase().includes(query) ||
       (ch.category && ch.category.toLowerCase().includes(query)) ||
-      (ch.serialNumber && String(ch.serialNumber).includes(query))
+      (ch.channelNumber && String(ch.channelNumber).includes(query))
     );
   });
 
@@ -499,38 +503,79 @@ export const MultiViewGrid: React.FC = () => {
       <div
         className={`p-2 sm:p-3 rounded-3xl bg-[#080B12] border transition-all duration-500 ${getAmbilightClass()}`}
       >
-        <div
-          className={`grid gap-2.5 sm:gap-3 ${
-            layout === '1'
-              ? 'grid-cols-1'
-              : layout === '2'
-              ? 'grid-cols-1 md:grid-cols-2'
-              : layout === '3'
-              ? 'grid-cols-1 md:grid-cols-3'
-              : 'grid-cols-1 md:grid-cols-2'
-          }`}
-        >
-          {currentSlots.map((slot, index) => (
-            <div
-              key={slot.id}
-              className={`w-full aspect-video ${
-                layout === '3' && index === 0 ? 'md:col-span-2 md:row-span-2' : ''
-              }`}
-            >
-              <SingleSlotPlayer
-                slot={slot}
-                index={index}
-                isActiveAudio={activeAudioIndex === index}
-                onSelectAudio={() => setActiveAudioIndex(index)}
-                onChangeSource={() => setChangingSlotIndex(index)}
-                onInstantReplay={() => handleInstantReplay(index)}
-                videoRefCallback={(el) => {
-                  videoRefs.current[index] = el;
-                }}
-              />
+        {!isInstalled ? (
+          <div className="relative w-full aspect-video min-h-[360px] rounded-2xl bg-gradient-to-br from-[#101722] via-[#141C28] to-[#0A0E17] border-2 border-[#00B7FF]/40 overflow-hidden shadow-2xl flex flex-col items-center justify-center p-6 text-center">
+            <div className="relative z-10 max-w-lg space-y-4">
+              <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#00B7FF]/20 to-[#16D98A]/20 border border-[#00B7FF]/40 flex items-center justify-center mx-auto text-[#00B7FF] shadow-lg shadow-[#00B7FF]/20 animate-pulse">
+                <Smartphone className="w-8 h-8 text-[#00B7FF]" />
+              </div>
+
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-mono font-bold mb-2">
+                  <span>🚫 ওয়েবে সরাসরি সম্প্রচার বন্ধ রয়েছে</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  ৪-স্ক্রিন মাল্টিভিউ দেখতে KhelaDek APK ডাউনলোড করুন
+                </h3>
+                <p className="text-xs sm:text-sm text-[#A5B1C2] mt-1.5 leading-relaxed">
+                  একসাথে ৪টি স্ক্রিনে লাইভ ম্যাচ, বিকল্প ক্যামেরা অ্যাঙ্গেল এবং টিভি চ্যানেল উপভোগ করার সুবিধা শুধুমাত্র অফিশিয়াল KhelaDek অ্যাপে সংরক্ষিত। ওয়েব ব্রাউজারে লাইভ স্ট্রিমিং বন্ধ।
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <a
+                  href="/api/download-apk"
+                  download="KhelaDek-v2.4.0.apk"
+                  className="w-full sm:w-auto py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#00B7FF]/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4 fill-current" />
+                  <span>KhelaDek APK ডাউনলোড (৪.৮ MB)</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={enterAppMode}
+                  className="w-full sm:w-auto py-3.5 px-5 rounded-2xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/20 text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                >
+                  <span>অ্যাপ মোডে চালু করুন (App Mode)</span>
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div
+            className={`grid gap-2.5 sm:gap-3 ${
+              layout === '1'
+                ? 'grid-cols-1'
+                : layout === '2'
+                ? 'grid-cols-1 md:grid-cols-2'
+                : layout === '3'
+                ? 'grid-cols-1 md:grid-cols-3'
+                : 'grid-cols-1 md:grid-cols-2'
+            }`}
+          >
+            {currentSlots.map((slot, index) => (
+              <div
+                key={slot.id}
+                className={`w-full aspect-video ${
+                  layout === '3' && index === 0 ? 'md:col-span-2 md:row-span-2' : ''
+                }`}
+              >
+                <SingleSlotPlayer
+                  slot={slot}
+                  index={index}
+                  isActiveAudio={activeAudioIndex === index}
+                  onSelectAudio={() => setActiveAudioIndex(index)}
+                  onChangeSource={() => setChangingSlotIndex(index)}
+                  onInstantReplay={() => handleInstantReplay(index)}
+                  videoRefCallback={(el) => {
+                    videoRefs.current[index] = el;
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Source Selector Modal */}
@@ -625,7 +670,7 @@ export const MultiViewGrid: React.FC = () => {
                       onClick={() =>
                         handleSelectSlotSource(
                           evt.title,
-                          evt.streamUrl || VERIFIED_HLS_STREAM_1,
+                          evt.authorizedViewingUrl || VERIFIED_HLS_STREAM_1,
                           'match',
                           `${evt.status === 'LIVE' ? '🔴 লাইভ ম্যাচ' : 'ম্যাচ'} • ${evt.scoreSummary || ''}`,
                           evt.thumbnailUrl
@@ -677,10 +722,10 @@ export const MultiViewGrid: React.FC = () => {
                     onClick={() =>
                       handleSelectSlotSource(
                         ch.name,
-                        ch.url,
+                        ch.streamUrl,
                         'tv',
-                        `চ্যানেল #${ch.serialNumber || ''} • ${ch.category || 'TV'}`,
-                        ch.logo
+                        `চ্যানেল #${ch.channelNumber || ''} • ${ch.category || 'TV'}`,
+                        ch.logo || undefined
                       )
                     }
                     className="w-full p-2.5 rounded-xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/5 hover:border-[#00B7FF]/40 text-left flex items-center justify-between group transition-all"
@@ -697,7 +742,7 @@ export const MultiViewGrid: React.FC = () => {
                         />
                       ) : (
                         <div className="w-9 h-9 rounded-lg bg-white/5 text-[#A5B1C2] flex items-center justify-center text-xs font-bold font-mono">
-                          #{ch.serialNumber || ''}
+                          #{ch.channelNumber || ''}
                         </div>
                       )}
                       <div>
@@ -705,7 +750,7 @@ export const MultiViewGrid: React.FC = () => {
                           {ch.name}
                         </div>
                         <div className="text-[10px] text-[#A5B1C2] font-mono mt-0.5">
-                          চ্যানেল #{ch.serialNumber || ''} • {ch.category?.toUpperCase() || 'TV'}
+                          চ্যানেল #{ch.channelNumber || ''} • {ch.category?.toUpperCase() || 'TV'}
                         </div>
                       </div>
                     </div>

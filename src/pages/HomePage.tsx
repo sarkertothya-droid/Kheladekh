@@ -161,9 +161,6 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* Adsterra Mobile & Desktop 320x50 Ad Placement */}
-      <AdsterraBanner320x50 />
-
       {/* Multi-Sport Filter Control Bar */}
       <div className="flex items-center gap-2 p-1.5 bg-[#101722] rounded-2xl border border-white/10 overflow-x-auto no-scrollbar">
         {[
@@ -241,6 +238,9 @@ export const HomePage: React.FC = () => {
         )}
       </section>
 
+      {/* Adsterra 320x50 Monetization Banner */}
+      <AdsterraBanner320x50 />
+
       {/* Upcoming Events Section */}
       <section>
         <div className="flex items-center justify-between mb-6">
@@ -270,6 +270,9 @@ export const HomePage: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* Adsterra Native Monetization Banner */}
+      <AdsterraNativeBanner />
 
       {/* Finished / Ended Matches Section */}
       {finishedEvents.length > 0 && (
@@ -333,9 +336,6 @@ export const HomePage: React.FC = () => {
           </Link>
         </div>
       </section>
-
-      {/* Adsterra Native Banner (4 Images in a row) */}
-      <AdsterraNativeBanner />
 
       {/* Popular Sports */}
       <section>

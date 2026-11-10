@@ -1,32 +1,30 @@
 import React, { useEffect, useRef } from 'react';
 
+export const ADSTERRA_SMARTLINK_URL =
+  'https://www.profitableratecpmnetwork.com/ezzarzguc?key=b03d0150c9e5f312e521740071ad1243';
+
 /**
- * Adsterra 320x50 Banner Unit Component
- * Displays an asynchronous 320x50 mobile/desktop display banner.
+ * Adsterra 320x50 Standard Banner
+ * Key: 074ab4b2a5ca98920d433f3bcf2fe50d
  */
 export const AdsterraBanner320x50: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
 
-    // Clear previous if re-rendered
-    container.innerHTML = '';
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
 
-    const iframe = document.createElement('iframe');
-    iframe.width = '320';
-    iframe.height = '50';
-    iframe.style.border = 'none';
-    iframe.style.overflow = 'hidden';
-    iframe.scrolling = 'no';
-    iframe.title = 'Adsterra 320x50 Banner';
-
-    const htmlContent = `
+    doc.open();
+    doc.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: transparent; }</style>
+          <style>
+            body { margin: 0; padding: 0; background: transparent; display: flex; justify-content: center; align-items: center; }
+          </style>
         </head>
         <body>
           <script type="text/javascript">
@@ -38,48 +36,45 @@ export const AdsterraBanner320x50: React.FC<{ className?: string }> = ({ classNa
               'params' : {}
             };
           </script>
-          <script type="text/javascript" src="https://www.topcreativeformat.com/074ab4b2a5ca98920d433f3bcf2fe50d/invoke.js"></script>
+          <script type="text/javascript" src="//www.topcreativeformat.com/074ab4b2a5ca98920d433f3bcf2fe50d/invoke.js"></script>
         </body>
       </html>
-    `;
-
-    container.appendChild(iframe);
-
-    // Write content into iframe
-    try {
-      const doc = iframe.contentWindow?.document || iframe.contentDocument;
-      if (doc) {
-        doc.open();
-        doc.write(htmlContent);
-        doc.close();
-      }
-    } catch (e) {
-      console.warn('Adsterra iframe setup notice:', e);
-    }
+    `);
+    doc.close();
   }, []);
 
   return (
-    <div className={`flex flex-col items-center justify-center my-3 overflow-hidden ${className}`}>
-      <span className="text-[9px] uppercase tracking-wider text-[#A5B1C2]/60 mb-1 font-mono">ADVERTISEMENT</span>
-      <div ref={containerRef} className="w-[320px] h-[50px] bg-black/20 rounded-lg flex items-center justify-center" />
+    <div className={`flex flex-col items-center justify-center my-3 ${className}`}>
+      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-mono mb-1">
+        Advertisement
+      </span>
+      <iframe
+        ref={iframeRef}
+        title="Adsterra 320x50 Banner"
+        width={320}
+        height={50}
+        frameBorder={0}
+        scrolling="no"
+        className="w-[320px] h-[50px] overflow-hidden rounded bg-transparent"
+      />
     </div>
   );
 };
 
 /**
- * Adsterra Native Banner Unit (4 images in a row)
- * Container ID: container-c64a0227843897af2b96d7092feac269
+ * Adsterra Native Banner
+ * Script: https://bauval.org/21/c64a0227843897af2b96d7092feac269
+ * Container: container-c64a0227843897af2b96d7092feac269
  */
 export const AdsterraNativeBanner: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const loadedRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
+    if (!containerRef.current) return;
 
-    // Load async script if not already present
-    const existing = document.querySelector('script[src*="c64a0227843897af2b96d7092feac269"]');
-    if (!existing) {
+    // Check if script is already present
+    const existingScript = document.querySelector('script[src*="c64a0227843897af2b96d7092feac269"]');
+    if (!existingScript) {
       const script = document.createElement('script');
       script.async = true;
       script.setAttribute('data-cfasync', 'false');
@@ -89,14 +84,15 @@ export const AdsterraNativeBanner: React.FC<{ className?: string }> = ({ classNa
   }, []);
 
   return (
-    <div className={`my-6 p-4 rounded-2xl bg-[#101722] border border-white/10 shadow-lg ${className}`}>
-      <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
-        <span className="text-[10px] uppercase font-bold tracking-wider text-[#00B7FF] font-mono">
-          স্পন্সর কনটেন্ট (Sponsored Recommendations)
-        </span>
-        <span className="text-[9px] text-[#A5B1C2] font-mono">Adsterra Native</span>
-      </div>
-      <div id="container-c64a0227843897af2b96d7092feac269" className="min-h-[100px] w-full" />
+    <div className={`w-full my-4 flex flex-col items-center justify-center ${className}`}>
+      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-mono mb-1">
+        Sponsored
+      </span>
+      <div
+        id="container-c64a0227843897af2b96d7092feac269"
+        ref={containerRef}
+        className="w-full min-h-[90px] flex justify-center items-center"
+      />
     </div>
   );
 };

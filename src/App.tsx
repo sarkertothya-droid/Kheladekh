@@ -4,9 +4,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { useViewerPresence } from './services/presenceService';
-import { shouldDisplayAd } from './services/adService';
-import { PreRollAdModal } from './components/PreRollAdModal';
 import { Navbar } from './components/Navbar';
+import { AppDownloadBanner } from './components/AppDownloadBanner';
 import { NotificationPermissionBanner } from './components/NotificationPermissionBanner';
 import { SupportChatWidget } from './components/SupportChatWidget';
 import { Footer } from './components/Footer';
@@ -26,6 +25,7 @@ import { LegalPage } from './pages/LegalPage';
 import { AdminPage } from './pages/AdminPage';
 import { TvPage } from './pages/TvPage';
 import { StadiumPage } from './pages/StadiumPage';
+import { AppDownloadPage } from './pages/AppDownloadPage';
 
 function GlobalPresenceTracker() {
   const location = useLocation();
@@ -47,35 +47,6 @@ function GlobalPresenceTracker() {
   return null;
 }
 
-function AppEntryAd() {
-  const { settings } = useData();
-  const [showAd, setShowAd] = useState(false);
-
-  useEffect(() => {
-    const adConfig = settings?.preRollAd;
-    if (adConfig && adConfig.enabled === false) return;
-
-    const freq = adConfig?.frequencyHours || 12;
-    if (shouldDisplayAd(freq)) {
-      const timer = setTimeout(() => {
-        setShowAd(true);
-      }, 600);
-      return () => clearTimeout(timer);
-    }
-  }, [settings?.preRollAd]);
-
-  if (!showAd) return null;
-
-  return (
-    <PreRollAdModal
-      config={settings?.preRollAd}
-      isOpen={showAd}
-      onClose={() => setShowAd(false)}
-      contextText="ওয়েবসাইটে প্রবেশের সংক্ষিপ্ত ১২ সেকেন্ড বিজ্ঞাপন (পরবর্তী ১২ ঘণ্টা বিজ্ঞাপনমুক্ত)"
-    />
-  );
-}
-
 export default function App() {
   return (
     <BrowserRouter>
@@ -83,13 +54,16 @@ export default function App() {
         <DataProvider>
           <NotificationProvider>
             <GlobalPresenceTracker />
-            <AppEntryAd />
             <div className="min-h-screen flex flex-col bg-[#080B12] text-white">
+              <AppDownloadBanner />
               <Navbar />
               <NotificationPermissionBanner />
               <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
                 <Routes>
                   <Route path="/" element={<HomePage />} />
+                  <Route path="/download" element={<AppDownloadPage />} />
+                  <Route path="/app" element={<AppDownloadPage />} />
+                  <Route path="/get-app" element={<AppDownloadPage />} />
                   <Route path="/sports" element={<SportsPage />} />
                   <Route path="/live" element={<LiveEventsPage />} />
                   <Route path="/tv" element={<TvPage />} />

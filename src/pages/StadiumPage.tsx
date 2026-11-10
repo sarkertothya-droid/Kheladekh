@@ -14,7 +14,6 @@ import {
 import { MultiViewGrid } from '../components/MultiViewGrid';
 import { StadiumSoundboard } from '../components/StadiumSoundboard';
 import { MomentumRadar } from '../components/MomentumRadar';
-import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
 
 export const StadiumPage: React.FC = () => {
   return (
@@ -66,11 +65,6 @@ export const StadiumPage: React.FC = () => {
         <MultiViewGrid />
       </section>
 
-      {/* Adsterra 320x50 Banner */}
-      <div className="my-2">
-        <AdsterraBanner320x50 />
-      </div>
-
       {/* Two Column Grid: Virtual Stadium Soundboard + AI Momentum Radar */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <StadiumSoundboard />
@@ -98,9 +92,6 @@ export const StadiumPage: React.FC = () => {
           </span>
         </div>
       </div>
-
-      {/* Adsterra Native 4-Grid Banner */}
-      <AdsterraNativeBanner />
     </div>
   );
 };

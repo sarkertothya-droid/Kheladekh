@@ -23,11 +23,13 @@ import {
   CheckCircle2,
   Layers,
   Heart,
-  Hash
+  Hash,
+  Download,
+  Smartphone
 } from 'lucide-react';
 import rawChannelsData from '../data/tvChannels.json';
 import { LiveTvChannel } from '../types';
-import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 const CHANNELS: LiveTvChannel[] = rawChannelsData as LiveTvChannel[];
 
@@ -121,6 +123,7 @@ export const TvPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  const { isInstalled, enterAppMode } = usePWAInstall();
 
   // Check if current channel stream is an embed iframe (e.g. YouTube Live Embed)
   const isEmbed =
@@ -312,9 +315,6 @@ export const TvPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Adsterra 320x50 Ad Banner */}
-      <AdsterraBanner320x50 />
-
       {/* Main Broadcast Cinema Player Stage */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Main Live Player */}
@@ -323,7 +323,39 @@ export const TvPage: React.FC = () => {
             ref={playerContainerRef}
             className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl group select-none"
           >
-            {isEmbed ? (
+            {!isInstalled ? (
+              <div className="absolute inset-0 bg-gradient-to-br from-[#101722] via-[#141C28] to-[#0A0E17] flex flex-col items-center justify-center p-6 text-center z-30">
+                <div className="w-16 h-16 rounded-3xl bg-[#00B7FF]/15 border border-[#00B7FF]/30 flex items-center justify-center mb-3 text-[#00B7FF]">
+                  <Tv className="w-8 h-8 text-[#00B7FF]" />
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-mono font-bold mb-2">
+                  <span>🚫 ওয়েবে সরাসরি সম্প্রচার বন্ধ রয়েছে</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white">
+                  ১০০০+ টিভি চ্যানেল দেখতে KhelaDek APK ডাউনলোড করুন
+                </h3>
+                <p className="text-xs text-[#A5B1C2] max-w-md mt-1.5 leading-relaxed">
+                  টি স্পোর্টস, জিটিভি, স্টার স্পোর্টসসহ ১০০০+ দেশি ও আন্তর্জাতিক টিভি চ্যানেল দেখতে আপনার ডিভাইসে অফিশিয়াল KhelaDek অ্যাপটি ডাউনলোড করুন।
+                </p>
+                <div className="flex flex-col sm:flex-row items-center gap-3 mt-4">
+                  <a
+                    href="/api/download-apk"
+                    download="KhelaDek-v2.4.0.apk"
+                    className="py-3 px-6 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-xs flex items-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all"
+                  >
+                    <Download className="w-4 h-4 fill-current" />
+                    <span>KhelaDek APK ডাউনলোড করুন (৪.৮ MB)</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={enterAppMode}
+                    className="py-3 px-5 rounded-2xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/20 text-white text-xs font-bold active:scale-95 transition-all"
+                  >
+                    অ্যাপ মোডে চালান
+                  </button>
+                </div>
+              </div>
+            ) : isEmbed ? (
               <iframe
                 src={`${selectedChannel.streamUrl}&autoplay=1&mute=0`}
                 title={selectedChannel.name}
@@ -743,9 +775,6 @@ export const TvPage: React.FC = () => {
             ))}
           </div>
         </div>
-
-        {/* Adsterra Native Banner (4 Images in a row) */}
-        <AdsterraNativeBanner />
 
         {/* Section 2: Global Sports TV Channels */}
         <div className="space-y-4">

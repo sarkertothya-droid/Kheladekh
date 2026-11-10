@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Trophy, Radio, Newspaper, User, Search, Tv, ShieldCheck, Sparkles, Layers } from 'lucide-react';
+import { Home, Trophy, Radio, Newspaper, User, Search, Tv, ShieldCheck, Sparkles, Layers, Download, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { NotificationDropdown } from './NotificationDropdown';
 import { SecurityCenterModal } from './SecurityCenterModal';
@@ -112,6 +112,16 @@ export const Navbar: React.FC = () => {
 
           {/* Zone 3: Primary Action + Security Center + Search + Notification Dropdown */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* KhelaDek App Download CTA Button */}
+            <Link
+              to="/download"
+              title="KhelaDek অফিশিয়াল অ্যাপ ডাউনলোড করুন"
+              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#16D98A] to-[#00B7FF] text-[#080B12] text-xs font-black flex items-center gap-1.5 shadow-md shadow-[#16D98A]/20 hover:brightness-110 active:scale-95 transition-all whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5 fill-current" />
+              <span className="hidden sm:inline">অ্যাপ ডাউনলোড</span>
+            </Link>
+
             {/* Exclusive Stadium Studio 4X Trigger */}
             <Link
               to="/stadium"

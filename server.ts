@@ -528,6 +528,18 @@ app.post('/api/auth/password-reset', async (req, res) => {
   }
 });
 
+// Direct APK Download Endpoint
+app.get('/api/download-apk', (_req, res) => {
+  const apkPath = path.resolve(process.cwd(), 'public/downloads/KhelaDek-v2.4.0.apk');
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', 'attachment; filename="KhelaDek-v2.4.0.apk"');
+  res.download(apkPath, 'KhelaDek-v2.4.0.apk', (err) => {
+    if (err && !res.headersSent) {
+      res.status(500).json({ error: 'Error downloading APK' });
+    }
+  });
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

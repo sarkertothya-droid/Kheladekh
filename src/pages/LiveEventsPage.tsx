@@ -4,7 +4,6 @@ import { useData } from '../context/DataContext';
 import { EventCard } from '../components/EventCard';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { AutoSyncBar } from '../components/AutoSyncBar';
-import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
 
 export const LiveEventsPage: React.FC = () => {
   const { events } = useData();
@@ -65,9 +64,6 @@ export const LiveEventsPage: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* Adsterra 320x50 Banner */}
-      <AdsterraBanner320x50 />
 
       {/* Featured Live Stadium Player (Only shown if on Live tab and active live stream exists) */}
       {activeTab === 'live' && featuredLive && (
@@ -152,9 +148,6 @@ export const LiveEventsPage: React.FC = () => {
           <p className="text-xs text-[#A5B1C2]">নতুন ম্যাচ সমাপ্ত হলে এখানে ফলাফল দৃশ্যমান হবে।</p>
         </div>
       )}
-
-      {/* Adsterra Native Banner */}
-      <AdsterraNativeBanner />
     </div>
   );
 };

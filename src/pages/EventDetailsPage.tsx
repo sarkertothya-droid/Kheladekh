@@ -9,7 +9,6 @@ import { LiveMatchChat } from '../components/LiveMatchChat';
 import { LiveMatchStats } from '../components/LiveMatchStats';
 import { LiveMatchPoll } from '../components/LiveMatchPoll';
 import { useViewerPresence, useMatchViewers } from '../services/presenceService';
-import { PreRollAdModal } from '../components/PreRollAdModal';
 import { StadiumSoundboard } from '../components/StadiumSoundboard';
 import { MomentumRadar } from '../components/MomentumRadar';
 import { StreamServer } from '../types';
@@ -23,7 +22,6 @@ export const EventDetailsPage: React.FC = () => {
 
   const { events, sports, competitions, teams, toggleSavedEvent, settings } = useData();
   const { user, profile } = useAuth();
-  const [showMatchAd, setShowMatchAd] = useState(false);
 
   const event = events.find((e) => e.slug === slug || e.id === slug);
   const matchViewersCount = useMatchViewers(event?.id);
@@ -76,16 +74,6 @@ export const EventDetailsPage: React.FC = () => {
     }
   }, [event?.id, event?.title]);
 
-  useEffect(() => {
-    const adConfig = settings?.preRollAd;
-    if (adConfig && adConfig.enabled === false) return;
-
-    const freq = adConfig?.frequencyHours || 12;
-    if (shouldDisplayAd(freq)) {
-      setShowMatchAd(true);
-    }
-  }, [settings?.preRollAd, event?.id]);
-
   useViewerPresence({
     page: event ? `/events/${event.slug || event.id}` : window.location.pathname,
     eventId: event?.id || null,
@@ -120,13 +108,6 @@ export const EventDetailsPage: React.FC = () => {
 
   return (
     <div className="space-y-10">
-      {/* 12-Second Pre-Roll Match Ad Modal (12-hour frequency cap) */}
-      <PreRollAdModal
-        config={settings?.preRollAd}
-        isOpen={showMatchAd}
-        onClose={() => setShowMatchAd(false)}
-        contextText={`"${event.title}" খেলা শুরু হওয়ার পূর্বে সংক্ষিপ্ত ১২ সেকেন্ড বিজ্ঞাপন`}
-      />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <Link
