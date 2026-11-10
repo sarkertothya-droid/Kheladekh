@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { RefreshCw, Radio, ShieldCheck, Zap } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { SecurityCenterModal } from './SecurityCenterModal';
 
 export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const {
@@ -11,6 +12,7 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
     syncLiveSportsFromGoogle,
   } = useData();
 
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
   const liveCount = events.filter((e) => e.published && e.status === 'LIVE').length;
 
   // Format MM:SS
@@ -39,6 +41,7 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
   }
 
   return (
+    <>
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#101722] via-[#151E2B] to-[#101722] border border-white/10 p-3 sm:p-4 shadow-xl">
       {/* Subtle background glow effect */}
       <div className="absolute -top-12 -right-12 w-32 h-32 bg-[#00B7FF]/10 rounded-full blur-2xl pointer-events-none" />
@@ -69,10 +72,15 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
         {/* Right Info: Countdown Timer & Sync Now Trigger */}
         <div className="flex items-center gap-3 self-end md:self-auto shrink-0">
           {/* Security & Verification Pill */}
-          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-mono">
+          <button
+            type="button"
+            onClick={() => setShowSecurityModal(true)}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[11px] font-mono transition-all cursor-pointer"
+            title="লাইভ সিকিউরিটি ডায়াগনস্টিক রিপোর্ট দেখুন"
+          >
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>সিকিউরিটি শিল্ড সক্রিয়</span>
-          </div>
+          </button>
 
           {/* 5-Minute Countdown Display */}
           <div className="px-3 py-1.5 rounded-xl bg-[#080B12] border border-white/10 flex items-center gap-2 font-mono text-xs text-white">
@@ -105,5 +113,7 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
         </div>
       )}
     </div>
+    <SecurityCenterModal isOpen={showSecurityModal} onClose={() => setShowSecurityModal(false)} />
+    </>
   );
 };

@@ -9,8 +9,9 @@ import { LiveMatchChat } from '../components/LiveMatchChat';
 import { LiveMatchStats } from '../components/LiveMatchStats';
 import { LiveMatchPoll } from '../components/LiveMatchPoll';
 import { useViewerPresence, useMatchViewers } from '../services/presenceService';
-import { shouldDisplayAd } from '../services/adService';
 import { PreRollAdModal } from '../components/PreRollAdModal';
+import { StadiumSoundboard } from '../components/StadiumSoundboard';
+import { MomentumRadar } from '../components/MomentumRadar';
 import { StreamServer } from '../types';
 
 export const EventDetailsPage: React.FC = () => {
@@ -135,14 +136,23 @@ export const EventDetailsPage: React.FC = () => {
           <ArrowLeft className="w-4 h-4" /> Back to Fixtures
         </Link>
 
-        {/* Auto Stream Search Status & Re-Sync Trigger */}
-        <div className="flex items-center gap-2">
+        {/* Auto Stream Search Status & Re-Sync Trigger + 4-Screen Stadium Link */}
+        <div className="flex flex-wrap items-center gap-2">
           {autoSearchStatus && (
             <div className="px-3 py-1 rounded-full bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-medium flex items-center gap-1.5 animate-fade-in shadow-sm">
               <Zap className="w-3.5 h-3.5 animate-pulse" />
               <span>{autoSearchStatus}</span>
             </div>
           )}
+
+          <Link
+            to="/stadium"
+            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-[#00B7FF] hover:brightness-110 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-md shadow-[#00B7FF]/25 border border-white/20 active:scale-95"
+            title="এই ম্যাচটি অন্যান্য খেলার সাথে ৪-স্ক্রিন স্টেডিয়াম স্টুডিওতে চালান"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
+            <span>৪-স্ক্রিন মাল্টিভিউতে চালান</span>
+          </Link>
 
           <button
             type="button"
@@ -193,6 +203,17 @@ export const EventDetailsPage: React.FC = () => {
         autoFullscreen={autoFullscreen}
         initialResolution={initialResolution}
       />
+
+      {/* 🌟 Exclusive Live Stadium Soundboard Toolbar under Player */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-2xl bg-[#101722] border border-white/10 shadow-lg">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded bg-[#00B7FF]/20 text-[#00B7FF] text-[10px] font-mono font-bold">
+            FX
+          </span>
+          <span className="text-xs font-bold text-white">স্টেডিয়াম সাউন্ড এফেক্টস:</span>
+        </div>
+        <StadiumSoundboard compact />
+      </div>
 
       {/* Interactive Match Center Tabs */}
       <div className="space-y-4">

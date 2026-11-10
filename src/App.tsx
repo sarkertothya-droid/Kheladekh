@@ -8,6 +8,7 @@ import { shouldDisplayAd } from './services/adService';
 import { PreRollAdModal } from './components/PreRollAdModal';
 import { Navbar } from './components/Navbar';
 import { NotificationPermissionBanner } from './components/NotificationPermissionBanner';
+import { SupportChatWidget } from './components/SupportChatWidget';
 import { Footer } from './components/Footer';
 import { HomePage } from './pages/HomePage';
 import { SportsPage } from './pages/SportsPage';
@@ -24,6 +25,7 @@ import { ContactPage } from './pages/ContactPage';
 import { LegalPage } from './pages/LegalPage';
 import { AdminPage } from './pages/AdminPage';
 import { TvPage } from './pages/TvPage';
+import { StadiumPage } from './pages/StadiumPage';
 
 function GlobalPresenceTracker() {
   const location = useLocation();
@@ -91,6 +93,8 @@ export default function App() {
                   <Route path="/sports" element={<SportsPage />} />
                   <Route path="/live" element={<LiveEventsPage />} />
                   <Route path="/tv" element={<TvPage />} />
+                  <Route path="/stadium" element={<StadiumPage />} />
+                  <Route path="/multiview" element={<StadiumPage />} />
                   <Route path="/upcoming" element={<UpcomingEventsPage />} />
                   <Route path="/events/:slug" element={<EventDetailsPage />} />
                   <Route path="/news" element={<NewsPage />} />
@@ -107,6 +111,7 @@ export default function App() {
                 </Routes>
               </main>
               <Footer />
+              <SupportChatWidget />
             </div>
           </NotificationProvider>
         </DataProvider>

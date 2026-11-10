@@ -200,3 +200,13 @@ export interface LiveTvChannel {
   language?: string;
 }
 
+export interface SupportChatMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'user' | 'support' | 'bot';
+  text: string;
+  createdAt: string;
+}
+

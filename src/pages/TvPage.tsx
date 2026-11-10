@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import Hls from 'hls.js';
 import {
   Tv,
@@ -283,7 +284,19 @@ export const TvPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+          <Link
+            to="/stadium"
+            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-[#00B7FF] text-white hover:brightness-110 flex items-center gap-2.5 text-xs font-bold shadow-lg shadow-[#00B7FF]/25 border border-white/20 active:scale-95 transition-all"
+            title="একসাথে ৪টি টিভি চ্যানেল চালান"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+            <div className="text-left">
+              <p className="text-[10px] text-amber-300 uppercase font-mono font-bold leading-none">এক্সক্লুসিভ</p>
+              <p className="text-xs font-extrabold leading-tight mt-0.5">৪-স্ক্রিন মোডে দেখুন</p>
+            </div>
+          </Link>
+
           <div className="px-4 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-right">
             <p className="text-[10px] text-emerald-400 uppercase font-mono font-bold">🇧🇩 বাংলাদেশি চ্যানেল</p>
             <p className="font-display text-xl font-black text-emerald-400 tabular-nums">

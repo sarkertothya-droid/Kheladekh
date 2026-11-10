@@ -6,6 +6,7 @@ import { HERO_IMAGE } from '../data/seedData';
 import { EventCard } from '../components/EventCard';
 import { NewsCard } from '../components/NewsCard';
 import { AutoSyncBar } from '../components/AutoSyncBar';
+import { StadiumSoundboard } from '../components/StadiumSoundboard';
 import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
 
 export const HomePage: React.FC = () => {
@@ -86,6 +87,13 @@ export const HomePage: React.FC = () => {
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <Link
+              to="/stadium"
+              className="min-h-[44px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-[#00B7FF] text-white text-sm font-bold hover:brightness-110 transition-all inline-flex items-center gap-2 whitespace-nowrap shrink-0 shadow-xl shadow-[#00B7FF]/25 ring-2 ring-white/30 active:scale-95"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+              <span>৪-স্ক্রিন স্টেডিয়াম স্টুডিও (এক্সক্লুসিভ)</span>
+            </Link>
+            <Link
               to="/tv"
               className="min-h-[44px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 text-white text-sm font-bold hover:brightness-110 transition-all inline-flex items-center gap-2 whitespace-nowrap shrink-0 shadow-lg shadow-red-600/30 ring-1 ring-white/20"
             >
@@ -106,6 +114,49 @@ export const HomePage: React.FC = () => {
               Browse Sports
               <ArrowRight className="w-4 h-4" />
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* 🚀 EXCLUSIVE FEATURE BANNER: Stadium Studio Pro (Only on this website!) */}
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#101722] via-[#162130] to-[#101722] border-2 border-[#00B7FF]/40 p-5 sm:p-6 shadow-2xl">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00B7FF]/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="space-y-2 max-w-xl">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-red-500/20 to-purple-500/20 border border-red-500/30 text-red-400 text-xs font-mono font-bold">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>অন্য কোনো ওয়েবসাইটে নেই • শুধু KhelaDekH-এ!</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <span>স্টেডিয়াম স্টুডিও প্রো™ (৪-স্ক্রিন মাল্টিভিউ)</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-[#A5B1C2] leading-relaxed">
+              একই সাথে ৪টি লাইভ খেলা বা টিভি চ্যানেল দেখুন, ১-ট্যাপে সাউন্ড ট্রান্সফার করুন এবং নিচের লাইভ ভুভুজেলা ও করতালি সাউন্ড বাজিয়ে খেলা উপভোগ করুন!
+            </p>
+
+            {/* Quick Interactive Stadium Sound triggers right on homepage */}
+            <div className="pt-2">
+              <span className="text-[11px] font-mono font-bold text-[#64748B] block mb-1.5 uppercase">
+                টেস্ট করুন স্টেডিয়াম সাউন্ড এফেক্টস:
+              </span>
+              <StadiumSoundboard compact />
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
+            <Link
+              to="/stadium"
+              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-sm text-center flex items-center justify-center gap-2 shadow-xl shadow-[#00B7FF]/25 hover:brightness-110 active:scale-95 transition-all"
+            >
+              <Sparkles className="w-4 h-4 fill-current" />
+              <span>৪-স্ক্রিন মোড চালু করুন</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <div className="text-[11px] text-center text-[#A5B1C2] font-mono">
+              ⚡ জিরো ব্যান্ডউইথ অডিও সিন্থেসিস
+            </div>
           </div>
         </div>
       </section>
