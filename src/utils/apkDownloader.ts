@@ -37,13 +37,13 @@ export async function downloadKhelaDekBinaryApk(
     }
 
     if (onProgress) {
-      onProgress(60, '৭.৩২ MB বাইনারি প্যাকেজ প্রসেস করা হচ্ছে...');
+      onProgress(60, 'অফিশিয়াল সাইনড APK প্যাকেজ প্রসেস করা হচ্ছে...');
     }
 
     const blob = await response.blob();
 
-    // Verify it's not a tiny error page
-    if (blob.size < 1000000) {
+    // Verify it's not a tiny error page (valid APK is > 20KB)
+    if (blob.size < 20000) {
       throw new Error('INCOMPLETE_FILE_SIZE');
     }
 
