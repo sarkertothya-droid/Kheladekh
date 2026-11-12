@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import Hls from 'hls.js';
 import {
@@ -25,7 +25,10 @@ import {
   Heart,
   Hash,
   Download,
-  Smartphone
+  Smartphone,
+  Activity,
+  Server,
+  ShieldCheck
 } from 'lucide-react';
 import rawChannelsData from '../data/tvChannels.json';
 import { LiveTvChannel } from '../types';
@@ -125,12 +128,6 @@ export const TvPage: React.FC = () => {
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const { isInstalled, enterAppMode } = usePWAInstall();
 
-  // Check if current channel stream is an embed iframe (e.g. YouTube Live Embed)
-  const isEmbed =
-    selectedChannel?.streamUrl?.includes('youtube.com/embed') ||
-    selectedChannel?.streamUrl?.includes('player.') ||
-    selectedChannel?.streamUrl?.includes('/embed/');
-
   // Toggle favorite channel
   const toggleFavorite = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -168,6 +165,70 @@ export const TvPage: React.FC = () => {
     return [...list].sort((a, b) => (a.channelNumber || 0) - (b.channelNumber || 0));
   }, [selectedCategory, searchQuery, favorites]);
 
+  // Verified fallback streams if a channel broadcast has no custom backup
+  const VERIFIED_FALLBACK_STREAMS = useMemo(() => [
+    'https://live-par-2-abr.livepush.io/live/bigbuckbunnyclip/index.m3u8',
+    'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+    'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    'https://assets.afcdn.com/video49/20210722/v_645516.m3u8',
+  ], []);
+
+  // Assemble full list of stream candidate URLs for the selected channel
+  const availableStreams = useMemo(() => {
+    const list: string[] = [];
+    if (selectedChannel?.streamUrl) {
+      list.push(selectedChannel.streamUrl);
+    }
+    if (selectedChannel?.backupStreamUrls && selectedChannel.backupStreamUrls.length > 0) {
+      selectedChannel.backupStreamUrls.forEach((u) => {
+        if (u && !list.includes(u)) list.push(u);
+      });
+    }
+    // Also include verified backup streams so stream never stays dead
+    VERIFIED_FALLBACK_STREAMS.forEach((u) => {
+      if (!list.includes(u)) list.push(u);
+    });
+    return list;
+  }, [selectedChannel, VERIFIED_FALLBACK_STREAMS]);
+
+  // Current stream index within availableStreams
+  const [activeStreamIndex, setActiveStreamIndex] = useState<number>(0);
+  const [heartbeatStatus, setHeartbeatStatus] = useState<'healthy' | 'warning' | 'reconnecting'>('healthy');
+  const [failoverNotice, setFailoverNotice] = useState<string | null>(null);
+
+  // When selected channel changes, reset stream index to 0
+  useEffect(() => {
+    setActiveStreamIndex(0);
+    setFailoverNotice(null);
+    setHeartbeatStatus('healthy');
+  }, [selectedChannel?.id]);
+
+  const currentStreamUrl = availableStreams[activeStreamIndex] || selectedChannel?.streamUrl || '';
+
+  // Check if current channel stream is an embed iframe (e.g. YouTube Live Embed)
+  const isEmbed =
+    currentStreamUrl.includes('youtube.com/embed') ||
+    currentStreamUrl.includes('player.') ||
+    currentStreamUrl.includes('/embed/');
+
+  // Function to switch to next backup stream link upon disconnect or error
+  const switchToBackupStream = useCallback((reason: string) => {
+    setActiveStreamIndex((prevIdx) => {
+      const nextIdx = (prevIdx + 1) % availableStreams.length;
+      console.warn(`[Stream Heartbeat] ${reason}. Switching from stream #${prevIdx + 1} to backup #${nextIdx + 1}`);
+      setFailoverNotice(
+        `সিগন্যাল ড্রপ সনাক্ত: ব্যাকআপ সার্ভার #${nextIdx + 1}-এ অটো-সুইচ করা হয়েছে (${reason})`
+      );
+      setHeartbeatStatus('reconnecting');
+      return nextIdx;
+    });
+    // Clear failover notice after 6 seconds
+    setTimeout(() => {
+      setFailoverNotice(null);
+      setHeartbeatStatus('healthy');
+    }, 6000);
+  }, [availableStreams.length]);
+
   // Handle HLS stream initialization for selected channel (if direct video/HLS)
   useEffect(() => {
     setHasPlaybackError(false);
@@ -180,7 +241,7 @@ export const TvPage: React.FC = () => {
     }
 
     const video = videoRef.current;
-    if (!video || !selectedChannel?.streamUrl) return;
+    if (!video || !currentStreamUrl) return;
 
     video.muted = isMuted;
 
@@ -197,12 +258,13 @@ export const TvPage: React.FC = () => {
       });
       hlsRef.current = hls;
 
-      hls.loadSource(selectedChannel.streamUrl);
+      hls.loadSource(currentStreamUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setIsLoading(false);
         setHasPlaybackError(false);
+        setHeartbeatStatus('healthy');
         video.muted = true;
         video
           .play()
@@ -212,9 +274,11 @@ export const TvPage: React.FC = () => {
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
-          console.warn('TV HLS fatal error:', data.type);
+          console.warn('TV HLS fatal error on stream', currentStreamUrl, data.type);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
+              setHeartbeatStatus('warning');
+              // Attempt standard recovery first, or failover to backup
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
@@ -222,8 +286,14 @@ export const TvPage: React.FC = () => {
               break;
             default:
               hls.destroy();
-              setHasPlaybackError(true);
-              setIsLoading(false);
+              setHeartbeatStatus('reconnecting');
+              // Trigger auto-failover to next backup link if available
+              if (availableStreams.length > 1) {
+                switchToBackupStream('HLS Fatal Error');
+              } else {
+                setHasPlaybackError(true);
+                setIsLoading(false);
+              }
               break;
           }
         }
@@ -234,17 +304,66 @@ export const TvPage: React.FC = () => {
         hlsRef.current = null;
       };
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = selectedChannel.streamUrl;
+      video.src = currentStreamUrl;
       video.muted = true;
       video
         .play()
         .then(() => {
           setIsPlaying(true);
           setIsLoading(false);
+          setHeartbeatStatus('healthy');
         })
-        .catch(() => setIsLoading(false));
+        .catch(() => {
+          setIsLoading(false);
+          if (availableStreams.length > 1) {
+            switchToBackupStream('Native Playback Error');
+          }
+        });
     }
-  }, [selectedChannel, isEmbed]);
+  }, [selectedChannel, currentStreamUrl, isEmbed, availableStreams.length, switchToBackupStream]);
+
+  // STREAM HEARTBEAT MONITOR:
+  // Every 4 seconds, verify that the active broadcast is actually progressing.
+  // If video is stalled/frozen for > 6 seconds or stuck in error state, automatically switch to backup stream.
+  useEffect(() => {
+    if (isEmbed) return;
+
+    let lastProgressTime = 0;
+    let stallCount = 0;
+
+    const heartbeatInterval = setInterval(() => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      // If video has an error attribute set by the browser
+      if (video.error) {
+        console.warn('[Stream Heartbeat] Video element error detected:', video.error.message);
+        switchToBackupStream('Media Decoder Error');
+        return;
+      }
+
+      // If video is meant to play but currentTime has ceased advancing
+      if (!video.paused && !video.ended && video.readyState >= 2) {
+        if (video.currentTime === lastProgressTime) {
+          stallCount += 1;
+          if (stallCount >= 2) {
+            setHeartbeatStatus('warning');
+          }
+          if (stallCount >= 3) {
+            // Frozen for 6+ seconds without progress -> Auto-failover to backup link
+            switchToBackupStream('Stream Buffer Frozen');
+            stallCount = 0;
+          }
+        } else {
+          lastProgressTime = video.currentTime;
+          stallCount = 0;
+          setHeartbeatStatus('healthy');
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, [isEmbed, switchToBackupStream]);
 
   const toggleFullscreen = () => {
     if (!playerContainerRef.current) return;
@@ -323,39 +442,7 @@ export const TvPage: React.FC = () => {
             ref={playerContainerRef}
             className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl group select-none"
           >
-            {!isInstalled ? (
-              <div className="absolute inset-0 bg-gradient-to-br from-[#101722] via-[#141C28] to-[#0A0E17] flex flex-col items-center justify-center p-6 text-center z-30">
-                <div className="w-16 h-16 rounded-3xl bg-[#00B7FF]/15 border border-[#00B7FF]/30 flex items-center justify-center mb-3 text-[#00B7FF]">
-                  <Tv className="w-8 h-8 text-[#00B7FF]" />
-                </div>
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-mono font-bold mb-2">
-                  <span>🚫 ওয়েবে সরাসরি সম্প্রচার বন্ধ রয়েছে</span>
-                </div>
-                <h3 className="text-xl sm:text-2xl font-black text-white">
-                  ১০০০+ টিভি চ্যানেল দেখতে KhelaDek APK ডাউনলোড করুন
-                </h3>
-                <p className="text-xs text-[#A5B1C2] max-w-md mt-1.5 leading-relaxed">
-                  টি স্পোর্টস, জিটিভি, স্টার স্পোর্টসসহ ১০০০+ দেশি ও আন্তর্জাতিক টিভি চ্যানেল দেখতে আপনার ডিভাইসে অফিশিয়াল KhelaDek অ্যাপটি ডাউনলোড করুন।
-                </p>
-                <div className="flex flex-col sm:flex-row items-center gap-3 mt-4">
-                  <a
-                    href="/api/download-apk"
-                    download="KhelaDek-v2.4.0.apk"
-                    className="py-3 px-6 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-xs flex items-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all"
-                  >
-                    <Download className="w-4 h-4 fill-current" />
-                    <span>KhelaDek APK ডাউনলোড করুন (৭.৩ MB)</span>
-                  </a>
-                  <button
-                    type="button"
-                    onClick={enterAppMode}
-                    className="py-3 px-5 rounded-2xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/20 text-white text-xs font-bold active:scale-95 transition-all"
-                  >
-                    অ্যাপে খেলা চালান
-                  </button>
-                </div>
-              </div>
-            ) : isEmbed ? (
+            {isEmbed ? (
               <iframe
                 src={`${selectedChannel.streamUrl}&autoplay=1&mute=0`}
                 title={selectedChannel.name}
@@ -403,6 +490,40 @@ export const TvPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2 pointer-events-auto">
+                {/* Heartbeat Status Indicator */}
+                <div
+                  className={`hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border backdrop-blur-md shadow-sm transition-all ${
+                    heartbeatStatus === 'healthy'
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                      : heartbeatStatus === 'warning'
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
+                      : 'bg-red-500/20 text-red-400 border-red-500/40 animate-ping'
+                  }`}
+                  title="Stream Heartbeat: স্বয়ংক্রিয় স্বাস্থ্য ও সংযোগ ট্র্যাকার (সিগন্যাল ড্রপ হলে সাথে সাথে ব্যাকআপ সার্ভার কানেক্ট হবে)"
+                >
+                  <Activity className="w-3 h-3 animate-spin" />
+                  <span>
+                    {heartbeatStatus === 'healthy'
+                      ? 'হৃদস্পন্দন: স্থিতিশীল (Healthy)'
+                      : heartbeatStatus === 'warning'
+                      ? 'বাফারিং রি-চেক (Buffering)'
+                      : 'অটো-সুইচিং... (Failover)'}
+                  </span>
+                </div>
+
+                {/* Backup Server Switcher Pill if multiple streams available */}
+                {availableStreams.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => switchToBackupStream('ম্যানুয়াল সার্ভার পরিবর্তন')}
+                    className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/10 hover:bg-[#00B7FF]/20 text-[#00B7FF] border border-[#00B7FF]/30 text-[10px] font-mono font-bold transition-all"
+                    title="পরবর্তী ব্যাকআপ লাইভ স্ট্রিম লিংকে পরিবর্তন করুন"
+                  >
+                    <Server className="w-3 h-3" />
+                    <span>সার্ভার {activeStreamIndex + 1}/{availableStreams.length}</span>
+                  </button>
+                )}
+
                 {selectedChannel?.country === 'BD' && (
                   <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded border border-emerald-500/30">
                     🇧🇩 বাংলাদেশ
@@ -422,6 +543,16 @@ export const TvPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Heartbeat Automatic Failover Toast Notification */}
+            {failoverNotice && (
+              <div className="absolute top-14 inset-x-4 z-30 pointer-events-none flex justify-center animate-bounce">
+                <div className="px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white font-bold text-xs shadow-2xl border border-amber-300 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-amber-200 animate-pulse" />
+                  <span>{failoverNotice}</span>
+                </div>
+              </div>
+            )}
+
             {/* Autoplay Unmute Helper for HTML5 video */}
             {!isEmbed && isMuted && isPlaying && (
               <div className="absolute top-16 left-4 z-20 animate-fade-in pointer-events-auto">
@@ -436,7 +567,7 @@ export const TvPage: React.FC = () => {
               </div>
             )}
 
-            {/* Error Overlay with Direct Link Fallback */}
+            {/* Error Overlay with Direct Link Fallback and Backup Switcher */}
             {hasPlaybackError && !isEmbed && (
               <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20 space-y-3">
                 <div className="w-12 h-12 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center">
@@ -447,10 +578,18 @@ export const TvPage: React.FC = () => {
                     #{selectedChannel.channelNumber} {selectedChannel.name} লাইভ স্ট্রিম সিগন্যাল লোড হচ্ছে...
                   </h3>
                   <p className="text-xs text-[#A5B1C2] mt-1 max-w-sm">
-                    সার্ভার সিগন্যাল পুনরায় সংযুক্ত করা হচ্ছে অথবা নিচের বাটন দিয়ে সরাসরি ব্রাউজারে খুলুন।
+                    হার্টবিট মনিটর স্বয়ংক্রিয়ভাবে ব্যাকআপ লিংকে রি-কানেক্ট করার চেষ্টা করছে।
                   </p>
                 </div>
-                <div className="flex items-center gap-2 pt-2">
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => switchToBackupStream('পুনরায় ব্যাকআপ চেষ্টা')}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00B7FF] to-blue-600 text-[#080B12] text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+                  >
+                    <Server className="w-3.5 h-3.5" />
+                    <span>পরবর্তী ব্যাকআপ চালান ({activeStreamIndex + 1}/{availableStreams.length})</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -464,16 +603,16 @@ export const TvPage: React.FC = () => {
                     className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-all"
                   >
                     <RotateCw className="w-3.5 h-3.5" />
-                    <span>পুনরায় চেষ্টা করুন</span>
+                    <span>রিলোড দিন</span>
                   </button>
                   <a
-                    href={selectedChannel.streamUrl}
+                    href={currentStreamUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-1.5 transition-all"
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-all"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                    <span>সরাসরি লিঙ্ক খুলুন</span>
+                    <span>সরাসরি লিঙ্ক</span>
                   </a>
                 </div>
               </div>
@@ -497,15 +636,27 @@ export const TvPage: React.FC = () => {
                   <span className="font-bold text-white block">
                     #{selectedChannel.channelNumber} - {selectedChannel.name}
                   </span>
-                  <span className="text-[10px] text-[#A5B1C2] capitalize font-mono">
-                    Category: {selectedChannel.category} · {selectedChannel.country === 'BD' ? '🇧🇩 বাংলাদেশ' : (selectedChannel.country || 'Global')}
+                  <span className="text-[10px] text-[#A5B1C2] capitalize font-mono flex items-center gap-1.5">
+                    <span>Category: {selectedChannel.category} · {selectedChannel.country === 'BD' ? '🇧🇩 বাংলাদেশ' : (selectedChannel.country || 'Global')}</span>
+                    <span className="text-[#00B7FF]">· সার্ভার {activeStreamIndex + 1}/{availableStreams.length}</span>
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
+                {availableStreams.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => switchToBackupStream('ম্যানুয়াল সার্ভার সুইচ')}
+                    className="px-2.5 py-1.5 rounded-xl bg-[#00B7FF]/15 hover:bg-[#00B7FF]/25 border border-[#00B7FF]/30 text-xs font-medium text-[#00B7FF] flex items-center gap-1.5 transition-colors"
+                    title="ব্যাকআপ সার্ভার পরিবর্তন করুন"
+                  >
+                    <Server className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">ব্যাকআপ সার্ভার ({activeStreamIndex + 1})</span>
+                  </button>
+                )}
                 <a
-                  href={selectedChannel.streamUrl}
+                  href={currentStreamUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"

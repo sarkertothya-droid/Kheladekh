@@ -194,6 +194,7 @@ export interface LiveTvChannel {
   country?: string;
   logo?: string | null;
   streamUrl: string;
+  backupStreamUrls?: string[];
   quality?: string;
   isLive: boolean;
   featured?: boolean;

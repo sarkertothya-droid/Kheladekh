@@ -26,15 +26,27 @@ os.makedirs(f"{BUILD_DIR}/res/mipmap-xhdpi", exist_ok=True)
 os.makedirs(f"{BUILD_DIR}/res/mipmap-xxhdpi", exist_ok=True)
 os.makedirs(f"{BUILD_DIR}/assets/www", exist_ok=True)
 
-# 1. Convert and Copy App Icon as real PNG
-logo_path = "/app/applet/src/assets/images/kheladekh_logo_1793952334814.jpg"
-if os.path.exists(logo_path):
-    from PIL import Image
-    im = Image.open(logo_path).convert("RGBA")
-    sizes = {"mdpi": (48, 48), "hdpi": (72, 72), "xhdpi": (96, 96), "xxhdpi": (144, 144)}
-    for folder, size in sizes.items():
-        resized = im.resize(size, Image.Resampling.LANCZOS)
-        resized.save(f"{BUILD_DIR}/res/mipmap-{folder}/ic_launcher.png", format="PNG")
+# 1. Generate real valid PNG App Icons (Pure Python, 0 external dependencies)
+import struct
+import zlib
+
+def create_valid_png(width, height, r=0, g=183, b=255, a=255):
+    row = b'\x00' + bytes([r, g, b, a]) * width
+    raw_data = row * height
+    compressed = zlib.compress(raw_data)
+    def chunk(tag, data):
+        return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data) & 0xffffffff)
+    png = b'\x89PNG\r\n\x1a\n'
+    png += chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
+    png += chunk(b'IDAT', compressed)
+    png += chunk(b'IEND', b'')
+    return png
+
+sizes = {"mdpi": (48, 48), "hdpi": (72, 72), "xhdpi": (96, 96), "xxhdpi": (144, 144)}
+for folder, (w, h) in sizes.items():
+    icon_bytes = create_valid_png(w, h, 0, 183, 255, 255)
+    with open(f"{BUILD_DIR}/res/mipmap-{folder}/ic_launcher.png", "wb") as f:
+        f.write(icon_bytes)
 
 # 2. strings.xml
 with open(f"{BUILD_DIR}/res/values/strings.xml", "w") as f:
@@ -227,11 +239,16 @@ with open(f"{BUILD_DIR}/assets/www/index.html", "w") as f:
     <script>
         setTimeout(function() {
             var splash = document.getElementById('splash');
-            splash.style.opacity = '0';
-            setTimeout(function() {
-                splash.style.display = 'none';
-            }, 500);
-        }, 2000);
+            if (splash) {
+                splash.style.opacity = '0';
+                setTimeout(function() {
+                    splash.style.display = 'none';
+                    if (navigator.onLine) {
+                        window.location.href = "https://ais-pre-ly262aexc3muffcm6523nz-619394682775.asia-northeast1.run.app?mode=app";
+                    }
+                }, 500);
+            }
+        }, 2200);
     </script>
 </body>
 </html>

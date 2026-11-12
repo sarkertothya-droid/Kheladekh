@@ -571,62 +571,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     </div>
   );
 
-  // 🔒 STRICT WEB RESTRICTION: No streaming on web browser per user request!
-  // Web visitors are prompted to download the official KhelaDek APK to watch.
-  if (!isInstalled) {
-    return (
-      <div className="space-y-4 animate-fade-in">
-        {serverSelectorBar}
-        <div className="relative w-full aspect-video rounded-3xl bg-gradient-to-br from-[#101722] via-[#141C28] to-[#0A0E17] border-2 border-[#00B7FF]/40 overflow-hidden shadow-2xl flex flex-col items-center justify-center p-6 text-center">
-          {poster && (
-            <img
-              src={poster}
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover opacity-20 filter blur-sm pointer-events-none"
-            />
-          )}
-          <div className="absolute inset-0 bg-black/70 pointer-events-none" />
 
-          <div className="relative z-10 max-w-lg space-y-4">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#00B7FF]/20 to-[#16D98A]/20 border border-[#00B7FF]/40 flex items-center justify-center mx-auto text-[#00B7FF] shadow-lg shadow-[#00B7FF]/20 animate-pulse">
-              <Smartphone className="w-8 h-8 text-[#00B7FF]" />
-            </div>
-
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-mono font-bold mb-2">
-                <span>🚫 ওয়েবে সরাসরি সম্প্রচার বন্ধ রয়েছে</span>
-              </div>
-              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                খেলা দেখতে KhelaDek APK অ্যাপ ডাউনলোড করুন
-              </h3>
-              <p className="text-xs sm:text-sm text-[#A5B1C2] mt-1.5 leading-relaxed">
-                "{title}" এর লাইভ সম্প্রচার শুধুমাত্র অফিশিয়াল KhelaDek অ্যাপে উপলব্ধ। ওয়েবে খেলা দেখা যাবে না। বাফারমুক্ত ফুল এইচডি স্ট্রিমিং ও ১০০০+ টিভি চ্যানেল পেতে এখনই নিচের বাটন থেকে APK ডাউনলোড করুন।
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-              <a
-                href="/api/download-apk"
-                download="KhelaDek-v2.4.0.apk"
-                className="w-full sm:w-auto py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#00B7FF]/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
-              >
-                <Download className="w-4 h-4 fill-current" />
-                <span>KhelaDek APK ডাউনলোড (৭.৩ MB)</span>
-              </a>
-
-              <button
-                type="button"
-                onClick={enterAppMode}
-                className="w-full sm:w-auto py-3.5 px-5 rounded-2xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/20 text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
-              >
-                <span>অ্যাপে চালু করুন (App Mode)</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // If Third-Party Embed (YouTube, Facebook, etc.)
   if (!isDirectVideo) {

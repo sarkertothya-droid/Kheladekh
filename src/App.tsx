@@ -77,18 +77,23 @@ export default function App() {
               <NotificationPermissionBanner />
               <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
                 <Routes>
-                  <Route path="/" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/live" element={<LiveEventsPage />} />
+                  <Route path="/tv" element={<TvPage />} />
+                  <Route path="/stadium" element={<StadiumPage />} />
+                  <Route path="/multiview" element={<StadiumPage />} />
+                  <Route path="/sports" element={<SportsPage />} />
+                  <Route path="/events/:slug" element={<EventDetailsPage />} />
+                  <Route path="/upcoming" element={<UpcomingEventsPage />} />
+                  <Route path="/news" element={<NewsPage />} />
+                  <Route path="/news/:slug" element={<NewsDetailsPage />} />
+                  <Route path="/search" element={<SearchPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/auth" element={<AuthPage />} />
                   <Route path="/download" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/app" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/app" element={<HomePage />} />
                   <Route path="/apk" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
                   <Route path="/get-app" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/tv" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/stadium" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/multiview" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/live" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/sports" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/events/:slug" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
-                  <Route path="/upcoming" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
                   <Route path="/fixtures" element={<HomePage />} />
                   <Route path="/matches" element={<HomePage />} />
                   <Route path="/about" element={<AboutPage />} />
@@ -96,7 +101,7 @@ export default function App() {
                   <Route path="/privacy" element={<LegalPage type="privacy" />} />
                   <Route path="/terms" element={<LegalPage type="terms" />} />
                   <Route path="/admin" element={<AdminPage />} />
-                  <Route path="*" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="*" element={<HomePage />} />
                 </Routes>
               </main>
               <Footer />
