@@ -1,13 +1,19 @@
 import React from 'react';
-import { Download, Smartphone, Sparkles, ArrowRight } from 'lucide-react';
+import { Download, Smartphone, Sparkles, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { usePWAInstall } from '../hooks/usePWAInstall';
+import { downloadKhelaDekBinaryApk } from '../utils/apkDownloader';
 
-export const AppDownloadBanner: React.FC = () => {
-  const { isInstalled, install, enterAppMode } = usePWAInstall();
+interface AppDownloadBannerProps {
+  onLaunchApp?: () => void;
+  isAppMode?: boolean;
+}
 
-  // If already in standalone/app mode, show a clean active app badge instead of download CTA
-  if (isInstalled) {
+export const AppDownloadBanner: React.FC<AppDownloadBannerProps> = ({
+  onLaunchApp,
+  isAppMode = false,
+}) => {
+  // If already in app mode, show clean active app badge
+  if (isAppMode) {
     return (
       <div className="bg-gradient-to-r from-emerald-950/80 via-[#0D1815] to-emerald-950/80 border-b border-emerald-500/20 px-4 py-1.5 flex items-center justify-between text-xs">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
@@ -17,9 +23,12 @@ export const AppDownloadBanner: React.FC = () => {
               KhelaDek অফিশিয়াল অ্যাপ সক্রিয় (v2.4.0) — সম্পূর্ণ বিজ্ঞাপনমুক্ত
             </span>
           </div>
-          <span className="text-[10px] font-mono text-[#A5B1C2] hidden sm:inline">
-            Direct High-Speed Ultra HD Feed
-          </span>
+          <Link
+            to="/download"
+            className="text-[10px] font-mono text-[#A5B1C2] hover:text-white underline"
+          >
+            APK ডাউনলোড পেজ
+          </Link>
         </div>
       </div>
     );
@@ -33,30 +42,31 @@ export const AppDownloadBanner: React.FC = () => {
             <Smartphone className="w-4 h-4 text-white animate-bounce" />
           </div>
           <p className="text-xs font-bold leading-tight">
-            <span>খেলা দেখতে অফিশিয়াল KhelaDek অ্যাপটি ডাউনলোড করুন!</span>{' '}
-            <span className="text-amber-300 font-normal hidden md:inline">
-              (ওয়েবে খেলা ব্লক থাকবে, ফুল এইচডি খেলা শুধুমাত্র অ্যাপে চলবে)
-            </span>
+            <span>ওয়েবসাইটে কোনো সরাসরি সম্প্রচার হবে না! খেলা দেখতে KhelaDek APK ডাউনলোড করুন</span>
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Link
-            to="/download"
-            className="px-3.5 py-1 rounded-xl bg-white text-[#080B12] text-xs font-black flex items-center gap-1.5 hover:bg-amber-300 transition-all shadow-md active:scale-95 whitespace-nowrap"
-          >
-            <Download className="w-3.5 h-3.5 fill-current" />
-            <span>অ্যাপ ডাউনলোড (APK)</span>
-          </Link>
-
           <button
             type="button"
-            onClick={enterAppMode}
-            className="px-2.5 py-1 rounded-xl bg-black/40 hover:bg-black/60 border border-white/20 text-white text-[11px] font-semibold transition-all whitespace-nowrap"
-            title="ইনস্ট্যান্ট অ্যাপ মোডে প্রবেশ করুন"
+            onClick={() => downloadKhelaDekBinaryApk()}
+            className="px-3.5 py-1 rounded-xl bg-white text-[#080B12] text-xs font-black flex items-center gap-1.5 hover:bg-amber-300 transition-all shadow-md active:scale-95 whitespace-nowrap cursor-pointer"
           >
-            অ্যাপ মোড
+            <Download className="w-3.5 h-3.5 fill-current" />
+            <span>APK ডাউনলোড (৭.৩ MB)</span>
           </button>
+
+          {onLaunchApp && (
+            <button
+              type="button"
+              onClick={onLaunchApp}
+              className="px-3 py-1 rounded-xl bg-black/40 hover:bg-black/60 border border-white/20 text-white text-xs font-bold flex items-center gap-1 transition-all whitespace-nowrap cursor-pointer"
+              title="ইনস্ট্যান্ট অ্যাপ ওপেন করুন"
+            >
+              <Play className="w-3 h-3 text-[#16D98A] fill-current" />
+              <span>অ্যাপে ওপেন</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

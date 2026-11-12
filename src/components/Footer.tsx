@@ -16,10 +16,21 @@ export const Footer: React.FC = () => {
               className="w-6 h-6 rounded-md object-cover"
             />
             <span>
-              Khela<span className="text-[#00B7FF]">DekH</span>
+              Khela<span className="text-[#00B7FF]">Dek</span>
             </span>
           </Link>
-          <p className="text-xs text-[#A5B1C2] mt-1">{settings.footerText}</p>
+          <p className="text-xs text-[#A5B1C2] mt-1">
+            অফিশিয়াল KhelaDek অ্যাপ পোর্টাল — সব লাইভ ফুটবল, ক্রিকেট ও ১০০০+ টিভি চ্যানেল দেখতে APK ডাউনলোড করুন।
+          </p>
+          <div className="mt-3">
+            <a
+              href="/api/download-apk"
+              download="KhelaDek-v2.4.0.apk"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-bold hover:bg-[#00B7FF] hover:text-[#080B12] transition-all"
+            >
+              <span>Download KhelaDek APK (v2.4.0 • ৭.৩ MB)</span>
+            </a>
+          </div>
         </div>
 
         <nav className="flex flex-wrap items-center gap-6 text-xs font-medium text-[#A5B1C2]">

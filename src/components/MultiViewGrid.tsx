@@ -529,7 +529,7 @@ export const MultiViewGrid: React.FC = () => {
                   className="w-full sm:w-auto py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#00B7FF]/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                 >
                   <Download className="w-4 h-4 fill-current" />
-                  <span>KhelaDek APK ডাউনলোড (৪.৮ MB)</span>
+                  <span>KhelaDek APK ডাউনলোড (৭.৩ MB)</span>
                 </a>
 
                 <button

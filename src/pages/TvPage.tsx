@@ -344,14 +344,14 @@ export const TvPage: React.FC = () => {
                     className="py-3 px-6 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-xs flex items-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all"
                   >
                     <Download className="w-4 h-4 fill-current" />
-                    <span>KhelaDek APK ডাউনলোড করুন (৪.৮ MB)</span>
+                    <span>KhelaDek APK ডাউনলোড করুন (৭.৩ MB)</span>
                   </a>
                   <button
                     type="button"
                     onClick={enterAppMode}
                     className="py-3 px-5 rounded-2xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/20 text-white text-xs font-bold active:scale-95 transition-all"
                   >
-                    অ্যাপ মোডে চালান
+                    অ্যাপে খেলা চালান
                   </button>
                 </div>
               </div>

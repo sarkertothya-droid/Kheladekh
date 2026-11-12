@@ -7,7 +7,6 @@ import { EventCard } from '../components/EventCard';
 import { NewsCard } from '../components/NewsCard';
 import { AutoSyncBar } from '../components/AutoSyncBar';
 import { StadiumSoundboard } from '../components/StadiumSoundboard';
-import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
 
 export const HomePage: React.FC = () => {
   const { events, sports, news, loading } = useData();
@@ -238,9 +237,6 @@ export const HomePage: React.FC = () => {
         )}
       </section>
 
-      {/* Adsterra 320x50 Monetization Banner */}
-      <AdsterraBanner320x50 />
-
       {/* Upcoming Events Section */}
       <section>
         <div className="flex items-center justify-between mb-6">
@@ -270,9 +266,6 @@ export const HomePage: React.FC = () => {
           </div>
         )}
       </section>
-
-      {/* Adsterra Native Monetization Banner */}
-      <AdsterraNativeBanner />
 
       {/* Finished / Ended Matches Section */}
       {finishedEvents.length > 0 && (

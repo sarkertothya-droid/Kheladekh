@@ -26,62 +26,77 @@ import { AdminPage } from './pages/AdminPage';
 import { TvPage } from './pages/TvPage';
 import { StadiumPage } from './pages/StadiumPage';
 import { AppDownloadPage } from './pages/AppDownloadPage';
+import { AppSplashScreen } from './components/AppSplashScreen';
+import { usePWAInstall } from './hooks/usePWAInstall';
 
 function GlobalPresenceTracker() {
-  const location = useLocation();
-  const { user, profile } = useAuth();
-
-  // If viewing an event page, EventDetailsPage handles specific match presence
-  const isEventPage = location.pathname.startsWith('/events/');
-
-  useViewerPresence({
-    page: location.pathname,
-    eventId: null,
-    eventTitle: null,
-    sportId: null,
-    userId: user?.uid || null,
-    userName: profile?.displayName || user?.displayName || 'Fan',
-    enabled: !isEventPage,
-  });
-
   return null;
 }
 
 export default function App() {
+  const { isInstalled, enterAppMode } = usePWAInstall();
+  const [showSplash, setShowSplash] = useState(false);
+  const [appModeActive, setAppModeActive] = useState<boolean>(() => {
+    return (
+      localStorage.getItem('kheladek_app_mode') === 'true' ||
+      window.location.search.includes('mode=app')
+    );
+  });
+
+  // Sync if isInstalled triggers from PWA
+  useEffect(() => {
+    if (isInstalled && !appModeActive) {
+      setAppModeActive(true);
+    }
+  }, [isInstalled, appModeActive]);
+
+  const handleLaunchApp = () => {
+    setShowSplash(true);
+  };
+
+  const handleSplashFinish = () => {
+    setShowSplash(false);
+    setAppModeActive(true);
+    enterAppMode();
+    localStorage.setItem('kheladek_app_mode', 'true');
+  };
+
   return (
     <BrowserRouter>
       <AuthProvider>
         <DataProvider>
           <NotificationProvider>
             <GlobalPresenceTracker />
+
+            {/* App Splash Loading Screen */}
+            {showSplash && <AppSplashScreen onFinish={handleSplashFinish} />}
+
             <div className="min-h-screen flex flex-col bg-[#080B12] text-white">
-              <AppDownloadBanner />
-              <Navbar />
+              <AppDownloadBanner onLaunchApp={handleLaunchApp} isAppMode={appModeActive} />
+              <Navbar onLaunchApp={handleLaunchApp} isAppMode={appModeActive} />
               <NotificationPermissionBanner />
               <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
                 <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/download" element={<AppDownloadPage />} />
-                  <Route path="/app" element={<AppDownloadPage />} />
-                  <Route path="/get-app" element={<AppDownloadPage />} />
-                  <Route path="/sports" element={<SportsPage />} />
-                  <Route path="/live" element={<LiveEventsPage />} />
-                  <Route path="/tv" element={<TvPage />} />
-                  <Route path="/stadium" element={<StadiumPage />} />
-                  <Route path="/multiview" element={<StadiumPage />} />
-                  <Route path="/upcoming" element={<UpcomingEventsPage />} />
-                  <Route path="/events/:slug" element={<EventDetailsPage />} />
-                  <Route path="/news" element={<NewsPage />} />
-                  <Route path="/news/:slug" element={<NewsDetailsPage />} />
-                  <Route path="/search" element={<SearchPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/auth" element={<AuthPage />} />
+                  <Route path="/" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/download" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/app" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/apk" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/get-app" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/tv" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/stadium" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/multiview" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/live" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/sports" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/events/:slug" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/upcoming" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
+                  <Route path="/fixtures" element={<HomePage />} />
+                  <Route path="/matches" element={<HomePage />} />
                   <Route path="/about" element={<AboutPage />} />
                   <Route path="/contact" element={<ContactPage />} />
                   <Route path="/privacy" element={<LegalPage type="privacy" />} />
                   <Route path="/terms" element={<LegalPage type="terms" />} />
                   <Route path="/admin" element={<AdminPage />} />
-                  <Route path="*" element={<HomePage />} />
+                  <Route path="*" element={<AppDownloadPage onOpenApp={handleLaunchApp} />} />
                 </Routes>
               </main>
               <Footer />

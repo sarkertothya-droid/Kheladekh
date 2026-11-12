@@ -1,6 +1,6 @@
 {
   "name": "KhelaDekH",
-  "description": "KhelaDekH — Live sports, fixtures, news, and official match broadcasts.",
+  "description": "KhelaDek — Official Android APK App Download Portal. No live stream on web; download the official APK to watch all matches and 1000+ TV channels.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

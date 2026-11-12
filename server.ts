@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import path from 'path';
+import fs from 'fs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -15,14 +16,15 @@ app.use(express.json());
 // ROBUST SECURITY SYSTEM SUITE (Server-Side)
 // ==========================================
 
-// 1. Enterprise HTTP Security Headers Middleware
+// 1. Enterprise HTTP Security Headers Middleware (IFrame, WebView & Mobile Compatible)
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.removeHeader('X-Frame-Options');
   next();
 });
 
@@ -528,17 +530,37 @@ app.post('/api/auth/password-reset', async (req, res) => {
   }
 });
 
-// Direct APK Download Endpoint
-app.get('/api/download-apk', (_req, res) => {
-  const apkPath = path.resolve(process.cwd(), 'public/downloads/KhelaDek-v2.4.0.apk');
-  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-  res.setHeader('Content-Disposition', 'attachment; filename="KhelaDek-v2.4.0.apk"');
-  res.download(apkPath, 'KhelaDek-v2.4.0.apk', (err) => {
-    if (err && !res.headersSent) {
-      res.status(500).json({ error: 'Error downloading APK' });
-    }
+// Direct APK Download Endpoints (High-Speed Binary Stream)
+const handleApkDownload = (_req: express.Request, res: express.Response) => {
+  const primaryPath = path.resolve(process.cwd(), 'public/KhelaDek-v2.4.0.apk');
+  const backupPath = path.resolve(process.cwd(), 'public/downloads/KhelaDek-v2.4.0.apk');
+  const targetPath = fs.existsSync(primaryPath) ? primaryPath : backupPath;
+
+  if (!fs.existsSync(targetPath)) {
+    return res.status(404).send('APK file not found. Please contact support.');
+  }
+
+  const stat = fs.statSync(targetPath);
+  res.writeHead(200, {
+    'Content-Type': 'application/vnd.android.package-archive',
+    'Content-Disposition': 'attachment; filename="KhelaDek-v2.4.0.apk"',
+    'Content-Length': stat.size,
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Access-Control-Allow-Origin': '*',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
   });
-});
+
+  const stream = fs.createReadStream(targetPath);
+  stream.pipe(res);
+};
+
+app.get('/api/download-apk', handleApkDownload);
+app.get('/download-apk', handleApkDownload);
+app.get('/KhelaDek-v2.4.0.apk', handleApkDownload);
+app.get('/downloads/KhelaDek-v2.4.0.apk', handleApkDownload);
+app.get('/*.apk', handleApkDownload);
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
