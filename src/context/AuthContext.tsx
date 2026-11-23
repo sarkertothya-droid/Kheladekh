@@ -61,6 +61,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             newEvents: true,
             newsAlerts: false,
           },
+          vpnMode: false,
+          vpnRegion: 'auto',
           createdAt: new Date().toISOString(),
         };
         await setDoc(userRef, newProfile);
@@ -90,6 +92,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             newEvents: true,
             newsAlerts: false,
           },
+          vpnMode: false,
+          vpnRegion: 'auto',
           createdAt: new Date().toISOString(),
         };
         setProfile(fallbackProfile);
@@ -220,6 +224,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             favoriteTeams: [],
             savedEvents: [],
             notificationPreferences: { eventReminders: true, newEvents: true, newsAlerts: true },
+            vpnMode: false,
+            vpnRegion: 'auto',
             createdAt: new Date().toISOString(),
           };
 
@@ -273,6 +279,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             newEvents: true,
             newsAlerts: false,
           },
+          vpnMode: false,
+          vpnRegion: 'auto',
           createdAt: new Date().toISOString(),
         };
 

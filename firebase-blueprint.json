@@ -13,6 +13,8 @@
         "favoriteTeams": { "type": "array" },
         "savedEvents": { "type": "array" },
         "notificationPreferences": { "type": "object" },
+        "vpnMode": { "type": "boolean" },
+        "vpnRegion": { "type": "string", "enum": ["auto", "sg", "uk", "eu", "us"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "displayName", "email", "createdAt"]
@@ -42,7 +44,9 @@
         "sportId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
         "country": { "type": "string", "maxLength": 80 },
         "description": { "type": "string", "maxLength": 500 },
-        "logoUrl": { "type": "string", "maxLength": 500 }
+        "logoUrl": { "type": "string", "maxLength": 500 },
+        "captain": { "type": "string", "maxLength": 120 },
+        "captainPhotoUrl": { "type": "string", "maxLength": 500 }
       },
       "required": ["id", "name", "shortName", "sportId"]
     },
@@ -70,6 +74,13 @@
         "sportId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
         "competitionId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
         "teamIds": { "type": "array" },
+        "teamAName": { "type": "string", "maxLength": 120 },
+        "teamBName": { "type": "string", "maxLength": 120 },
+        "teamACaptain": { "type": "string", "maxLength": 120 },
+        "teamBCaptain": { "type": "string", "maxLength": 120 },
+        "teamACaptainPhoto": { "type": "string", "maxLength": 500 },
+        "teamBCaptainPhoto": { "type": "string", "maxLength": 500 },
+        "venue": { "type": "string", "maxLength": 160 },
         "description": { "type": "string", "maxLength": 2000 },
         "eventDate": { "type": "string", "maxLength": 32 },
         "eventTime": { "type": "string", "maxLength": 32 },

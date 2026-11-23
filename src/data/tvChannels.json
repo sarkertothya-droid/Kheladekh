@@ -18,7 +18,11 @@
     "name": "T Sports (Live Bangladesh)",
     "category": "sports",
     "country": "BD",
-    "streamUrl": "https://live-par-2-abr.livepush.io/live/bigbuckbunnyclip/index.m3u8",
+    "streamUrl": "https://www.youtube.com/embed/live_stream?channel=UCBoKYPIjkXcLhvHmHOJuPyQ",
+    "backupStreamUrls": [
+      "https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8",
+      "https://raycom-accdn-firetv.amagi.tv/playlist.m3u8"
+    ],
     "quality": "1080p HD",
     "isLive": true,
     "featured": true,

@@ -16,11 +16,8 @@ import {
   Flame,
   Shield,
   RefreshCw,
-  Download,
-  Smartphone,
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
-import { usePWAInstall } from '../hooks/usePWAInstall';
 import rawChannelsData from '../data/tvChannels.json';
 import { LiveTvChannel, SportEvent } from '../types';
 import {
@@ -63,6 +60,7 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
   onInstantReplay,
   videoRefCallback,
 }) => {
+  const { vpnMode, vpnRegion, getStreamNetworkConfig } = useData();
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -90,15 +88,14 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
       ? slot.streamUrl.trim()
       : fallbacks[index % fallbacks.length];
 
+    const netCfg = getStreamNetworkConfig(url);
+    const resolvedUrl = netCfg.resolvedUrl || url;
+
     if (Hls.isSupported() && (url.includes('.m3u8') || !url.includes('.mp4'))) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 60,
-      });
+      const hls = new Hls(netCfg.hlsConfig);
       hlsRef.current = hls;
 
-      hls.loadSource(url);
+      hls.loadSource(resolvedUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -114,20 +111,22 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError();
               break;
-            default:
+            default: {
               hls.destroy();
-              // Try fallback verified stream
-              video.src = fallbacks[index % fallbacks.length];
+              // Try fallback verified stream using active VPN network config
+              const fbCfg = getStreamNetworkConfig(fallbacks[index % fallbacks.length]);
+              video.src = fbCfg.resolvedUrl;
               video.play().catch(() => {});
               break;
+            }
           }
         }
       });
     } else {
-      video.src = url;
+      video.src = resolvedUrl;
       video.play().catch(() => {});
     }
-  }, [slot.streamUrl, index]);
+  }, [slot.streamUrl, index, vpnMode, vpnRegion, getStreamNetworkConfig]);
 
   useEffect(() => {
     initStream();
@@ -297,7 +296,6 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
 
 export const MultiViewGrid: React.FC = () => {
   const { events } = useData();
-  const { isInstalled, enterAppMode } = usePWAInstall();
   const liveEvents = events.filter((e) => e.published && e.status === 'LIVE');
   const allEvents = events.filter((e) => e.published);
 
@@ -503,79 +501,38 @@ export const MultiViewGrid: React.FC = () => {
       <div
         className={`p-2 sm:p-3 rounded-3xl bg-[#080B12] border transition-all duration-500 ${getAmbilightClass()}`}
       >
-        {!isInstalled ? (
-          <div className="relative w-full aspect-video min-h-[360px] rounded-2xl bg-gradient-to-br from-[#101722] via-[#141C28] to-[#0A0E17] border-2 border-[#00B7FF]/40 overflow-hidden shadow-2xl flex flex-col items-center justify-center p-6 text-center">
-            <div className="relative z-10 max-w-lg space-y-4">
-              <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#00B7FF]/20 to-[#16D98A]/20 border border-[#00B7FF]/40 flex items-center justify-center mx-auto text-[#00B7FF] shadow-lg shadow-[#00B7FF]/20 animate-pulse">
-                <Smartphone className="w-8 h-8 text-[#00B7FF]" />
-              </div>
-
-              <div>
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-mono font-bold mb-2">
-                  <span>🚫 ওয়েবে সরাসরি সম্প্রচার বন্ধ রয়েছে</span>
-                </div>
-                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  ৪-স্ক্রিন মাল্টিভিউ দেখতে KhelaDek APK ডাউনলোড করুন
-                </h3>
-                <p className="text-xs sm:text-sm text-[#A5B1C2] mt-1.5 leading-relaxed">
-                  একসাথে ৪টি স্ক্রিনে লাইভ ম্যাচ, বিকল্প ক্যামেরা অ্যাঙ্গেল এবং টিভি চ্যানেল উপভোগ করার সুবিধা শুধুমাত্র অফিশিয়াল KhelaDek অ্যাপে সংরক্ষিত। ওয়েব ব্রাউজারে লাইভ স্ট্রিমিং বন্ধ।
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-                <a
-                  href="/api/download-apk"
-                  download="KhelaDek-v2.4.0.apk"
-                  className="w-full sm:w-auto py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#33C5FF] to-[#16D98A] text-[#080B12] font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#00B7FF]/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
-                >
-                  <Download className="w-4 h-4 fill-current" />
-                  <span>KhelaDek APK ডাউনলোড (৭.৩ MB)</span>
-                </a>
-
-                <button
-                  type="button"
-                  onClick={enterAppMode}
-                  className="w-full sm:w-auto py-3.5 px-5 rounded-2xl bg-[#151E2B] hover:bg-[#1E293B] border border-white/20 text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
-                >
-                  <span>অ্যাপ মোডে চালু করুন (App Mode)</span>
-                </button>
-              </div>
+        <div
+          className={`grid gap-2.5 sm:gap-3 ${
+            layout === '1'
+              ? 'grid-cols-1'
+              : layout === '2'
+              ? 'grid-cols-1 md:grid-cols-2'
+              : layout === '3'
+              ? 'grid-cols-1 md:grid-cols-3'
+              : 'grid-cols-1 md:grid-cols-2'
+          }`}
+        >
+          {currentSlots.map((slot, index) => (
+            <div
+              key={slot.id}
+              className={`w-full aspect-video ${
+                layout === '3' && index === 0 ? 'md:col-span-2 md:row-span-2' : ''
+              }`}
+            >
+              <SingleSlotPlayer
+                slot={slot}
+                index={index}
+                isActiveAudio={activeAudioIndex === index}
+                onSelectAudio={() => setActiveAudioIndex(index)}
+                onChangeSource={() => setChangingSlotIndex(index)}
+                onInstantReplay={() => handleInstantReplay(index)}
+                videoRefCallback={(el) => {
+                  videoRefs.current[index] = el;
+                }}
+              />
             </div>
-          </div>
-        ) : (
-          <div
-            className={`grid gap-2.5 sm:gap-3 ${
-              layout === '1'
-                ? 'grid-cols-1'
-                : layout === '2'
-                ? 'grid-cols-1 md:grid-cols-2'
-                : layout === '3'
-                ? 'grid-cols-1 md:grid-cols-3'
-                : 'grid-cols-1 md:grid-cols-2'
-            }`}
-          >
-            {currentSlots.map((slot, index) => (
-              <div
-                key={slot.id}
-                className={`w-full aspect-video ${
-                  layout === '3' && index === 0 ? 'md:col-span-2 md:row-span-2' : ''
-                }`}
-              >
-                <SingleSlotPlayer
-                  slot={slot}
-                  index={index}
-                  isActiveAudio={activeAudioIndex === index}
-                  onSelectAudio={() => setActiveAudioIndex(index)}
-                  onChangeSource={() => setChangingSlotIndex(index)}
-                  onInstantReplay={() => handleInstantReplay(index)}
-                  videoRefCallback={(el) => {
-                    videoRefs.current[index] = el;
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
       {/* Source Selector Modal */}

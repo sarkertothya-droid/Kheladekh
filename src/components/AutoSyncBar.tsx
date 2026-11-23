@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Radio, ShieldCheck, Zap } from 'lucide-react';
+import { RefreshCw, Radio, ShieldCheck } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { SecurityCenterModal } from './SecurityCenterModal';
 
@@ -64,25 +64,14 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
               </span>
             </div>
             <p className="text-[11px] text-[#A5B1C2] mt-0.5">
-              প্রতি ৫ মিনিট পর পর স্বয়ংক্রিয়ভাবে নতুন লাইভ স্কোর ও স্ট্রিমিং সিঙ্ক হয়। সমাপ্ত ম্যাচ আলাদাভাবে সংরক্ষিত।
+              প্রতি ১ মিনিট পর পর রিয়েল-টাইম লাইভ স্কোর ও খেলার সূচি স্বয়ংক্রিয়ভাবে আপডেট হয় (কোনো ডামি স্কোর নেই)।
             </p>
           </div>
         </div>
 
         {/* Right Info: Countdown Timer & Sync Now Trigger */}
         <div className="flex items-center gap-3 self-end md:self-auto shrink-0">
-          {/* Security & Verification Pill */}
-          <button
-            type="button"
-            onClick={() => setShowSecurityModal(true)}
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[11px] font-mono transition-all cursor-pointer"
-            title="লাইভ সিকিউরিটি ডায়াগনস্টিক রিপোর্ট দেখুন"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>সিকিউরিটি শিল্ড সক্রিয়</span>
-          </button>
-
-          {/* 5-Minute Countdown Display */}
+          {/* 1-Minute Countdown Display */}
           <div className="px-3 py-1.5 rounded-xl bg-[#080B12] border border-white/10 flex items-center gap-2 font-mono text-xs text-white">
             <span className="text-[10px] text-[#A5B1C2] uppercase">পরবর্তী সিঙ্ক</span>
             <span className="font-black text-[#00B7FF] tracking-wider text-sm tabular-nums">
@@ -105,10 +94,10 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
       </div>
 
       {lastAutoSyncTime && (
-        <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-[#64748B]">
-          <span>সর্বশেষ সফল সিঙ্ক: {lastAutoSyncTime}</span>
-          <span className="text-[#00B7FF]/70 flex items-center gap-1">
-            <Zap className="w-3 h-3" /> রিয়েলটাইম Google Grounded Feed
+        <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-[#64748B]">
+          <span>সর্বশেষ যাচাইকৃত সিঙ্ক: {lastAutoSyncTime}</span>
+          <span className="text-[#16D98A] flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3" /> সার্ভার VPN রিলে ও রিয়েল-টাইম স্পোর্টস ফিড সক্রিয়
           </span>
         </div>
       )}

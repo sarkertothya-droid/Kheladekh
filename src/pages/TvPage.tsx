@@ -24,15 +24,14 @@ import {
   Layers,
   Heart,
   Hash,
-  Download,
-  Smartphone,
   Activity,
   Server,
   ShieldCheck
 } from 'lucide-react';
 import rawChannelsData from '../data/tvChannels.json';
-import { LiveTvChannel } from '../types';
-import { usePWAInstall } from '../hooks/usePWAInstall';
+import { LiveTvChannel, VpnRegion } from '../types';
+import { VERIFIED_SPORTS_STREAMS } from '../data/captainsData';
+import { useData } from '../context/DataContext';
 
 const CHANNELS: LiveTvChannel[] = rawChannelsData as LiveTvChannel[];
 
@@ -126,7 +125,6 @@ export const TvPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
-  const { isInstalled, enterAppMode } = usePWAInstall();
 
   // Toggle favorite channel
   const toggleFavorite = (id: string, e: React.MouseEvent) => {
@@ -165,12 +163,12 @@ export const TvPage: React.FC = () => {
     return [...list].sort((a, b) => (a.channelNumber || 0) - (b.channelNumber || 0));
   }, [selectedCategory, searchQuery, favorites]);
 
-  // Verified fallback streams if a channel broadcast has no custom backup
+  // Verified sports-only fallback streams if a channel broadcast has no custom backup
   const VERIFIED_FALLBACK_STREAMS = useMemo(() => [
-    'https://live-par-2-abr.livepush.io/live/bigbuckbunnyclip/index.m3u8',
-    'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
-    'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    'https://assets.afcdn.com/video49/20210722/v_645516.m3u8',
+    VERIFIED_SPORTS_STREAMS.GTV_LIVE,
+    VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
+    VERIFIED_SPORTS_STREAMS.ANTENA_SPORT,
+    VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT,
   ], []);
 
   // Assemble full list of stream candidate URLs for the selected channel
@@ -191,10 +189,27 @@ export const TvPage: React.FC = () => {
     return list;
   }, [selectedChannel, VERIFIED_FALLBACK_STREAMS]);
 
+  const {
+    vpnMode: globalVpnMode,
+    vpnRegion: globalVpnRegion,
+    updateVpnSettings,
+    getStreamNetworkConfig,
+  } = useData();
+
   // Current stream index within availableStreams
   const [activeStreamIndex, setActiveStreamIndex] = useState<number>(0);
   const [heartbeatStatus, setHeartbeatStatus] = useState<'healthy' | 'warning' | 'reconnecting'>('healthy');
   const [failoverNotice, setFailoverNotice] = useState<string | null>(null);
+  const [vpnActive, setVpnActive] = useState<boolean>(globalVpnMode);
+  const [vpnRegion, setVpnRegion] = useState<VpnRegion>(globalVpnRegion);
+
+  useEffect(() => {
+    setVpnActive(globalVpnMode);
+  }, [globalVpnMode]);
+
+  useEffect(() => {
+    setVpnRegion(globalVpnRegion);
+  }, [globalVpnRegion]);
 
   // When selected channel changes, reset stream index to 0
   useEffect(() => {
@@ -210,6 +225,13 @@ export const TvPage: React.FC = () => {
     currentStreamUrl.includes('youtube.com/embed') ||
     currentStreamUrl.includes('player.') ||
     currentStreamUrl.includes('/embed/');
+
+  const networkConfig = useMemo(
+    () => getStreamNetworkConfig(currentStreamUrl, vpnActive, vpnRegion),
+    [currentStreamUrl, vpnActive, vpnRegion, getStreamNetworkConfig]
+  );
+
+  const playbackStreamUrl = isEmbed ? currentStreamUrl : networkConfig.resolvedUrl;
 
   // Function to switch to next backup stream link upon disconnect or error
   const switchToBackupStream = useCallback((reason: string) => {
@@ -241,7 +263,7 @@ export const TvPage: React.FC = () => {
     }
 
     const video = videoRef.current;
-    if (!video || !currentStreamUrl) return;
+    if (!video || !playbackStreamUrl) return;
 
     video.muted = isMuted;
 
@@ -251,14 +273,10 @@ export const TvPage: React.FC = () => {
         hlsRef.current = null;
       }
 
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 60,
-      });
+      const hls = new Hls(networkConfig.hlsConfig);
       hlsRef.current = hls;
 
-      hls.loadSource(currentStreamUrl);
+      hls.loadSource(playbackStreamUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -274,12 +292,23 @@ export const TvPage: React.FC = () => {
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
-          console.warn('TV HLS fatal error on stream', currentStreamUrl, data.type);
+          console.warn('TV HLS fatal error on stream', playbackStreamUrl, data.type);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               setHeartbeatStatus('warning');
-              // Attempt standard recovery first, or failover to backup
-              hls.startLoad();
+              if (!vpnActive) {
+                hls.destroy();
+                setVpnActive(true);
+                setFailoverNotice('জিও-ব্লক/নেটওয়ার্ক বাধা শনাক্ত: সার্ভার VPN টানেলে অটো-কানেক্ট হয়েছে!');
+                setTimeout(() => setFailoverNotice(null), 5000);
+                return;
+              }
+              if (availableStreams.length > 1) {
+                hls.destroy();
+                switchToBackupStream('নেটওয়ার্ক/স্ট্রিম পরিবর্তন');
+              } else {
+                hls.startLoad();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError();
@@ -287,7 +316,6 @@ export const TvPage: React.FC = () => {
             default:
               hls.destroy();
               setHeartbeatStatus('reconnecting');
-              // Trigger auto-failover to next backup link if available
               if (availableStreams.length > 1) {
                 switchToBackupStream('HLS Fatal Error');
               } else {
@@ -304,7 +332,7 @@ export const TvPage: React.FC = () => {
         hlsRef.current = null;
       };
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = currentStreamUrl;
+      video.src = playbackStreamUrl;
       video.muted = true;
       video
         .play()
@@ -315,12 +343,14 @@ export const TvPage: React.FC = () => {
         })
         .catch(() => {
           setIsLoading(false);
-          if (availableStreams.length > 1) {
+          if (!vpnActive) {
+            setVpnActive(true);
+          } else if (availableStreams.length > 1) {
             switchToBackupStream('Native Playback Error');
           }
         });
     }
-  }, [selectedChannel, currentStreamUrl, isEmbed, availableStreams.length, switchToBackupStream]);
+  }, [selectedChannel, playbackStreamUrl, isEmbed, availableStreams.length, switchToBackupStream, vpnActive, networkConfig]);
 
   // STREAM HEARTBEAT MONITOR:
   // Every 4 seconds, verify that the active broadcast is actually progressing.
@@ -510,6 +540,54 @@ export const TvPage: React.FC = () => {
                       : 'অটো-সুইচিং... (Failover)'}
                   </span>
                 </div>
+
+                {/* Server VPN Tunnel Toggle & Region */}
+                {!isEmbed && (
+                  <div className="flex items-center gap-1 bg-black/50 border border-white/15 rounded-lg p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !vpnActive;
+                        setVpnActive(next);
+                        updateVpnSettings(next, vpnRegion);
+                        setFailoverNotice(
+                          next
+                            ? `Server VPN Tunnel সংযুক্ত হয়েছে (${vpnRegion.toUpperCase()})`
+                            : 'সরাসরি স্ট্রিম মোড চালু হয়েছে'
+                        );
+                        setTimeout(() => setFailoverNotice(null), 4000);
+                      }}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition-all ${
+                        vpnActive
+                          ? 'bg-[#16D98A]/25 text-[#16D98A]'
+                          : 'bg-white/10 hover:bg-[#00B7FF]/20 text-white'
+                      }`}
+                      title="জিও-ব্লক এড়াতে সার্ভার VPN টানেল চালু/বন্ধ করুন"
+                    >
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>{vpnActive ? 'VPN: ON' : 'VPN কানেক্ট'}</span>
+                    </button>
+                    <select
+                      value={vpnRegion}
+                      onChange={(e) => {
+                        const reg = e.target.value as VpnRegion;
+                        setVpnRegion(reg);
+                        setVpnActive(true);
+                        updateVpnSettings(true, reg);
+                        setFailoverNotice(`VPN সার্ভার রুট: ${reg.toUpperCase()} সংযুক্ত`);
+                        setTimeout(() => setFailoverNotice(null), 4000);
+                      }}
+                      aria-label="TV VPN Region"
+                      className="bg-transparent text-[10px] font-mono text-[#00B7FF] outline-none pr-1 cursor-pointer"
+                    >
+                      <option value="auto" className="bg-[#101722]">Auto</option>
+                      <option value="sg" className="bg-[#101722]">SG</option>
+                      <option value="uk" className="bg-[#101722]">UK</option>
+                      <option value="eu" className="bg-[#101722]">EU</option>
+                      <option value="us" className="bg-[#101722]">US</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* Backup Server Switcher Pill if multiple streams available */}
                 {availableStreams.length > 1 && (

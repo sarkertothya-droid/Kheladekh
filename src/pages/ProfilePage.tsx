@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { LogOut, Check } from 'lucide-react';
+import { LogOut, Check, ShieldCheck, Globe } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { EventCard } from '../components/EventCard';
+import { VpnRegion } from '../types';
+
+const VPN_REGION_OPTIONS: { value: VpnRegion; label: string }[] = [
+  { value: 'auto', label: 'Auto Cloud Relay (Fastest)' },
+  { value: 'sg', label: 'Singapore (SG) — Asia Low Latency' },
+  { value: 'uk', label: 'United Kingdom (UK) — Cricket & EPL' },
+  { value: 'eu', label: 'Europe (DE) — Continental Sports' },
+  { value: 'us', label: 'United States (US) — NBA & ATP' },
+];
 
 export const ProfilePage: React.FC = () => {
   const { user, profile, loading, logout } = useAuth();
@@ -11,6 +20,9 @@ export const ProfilePage: React.FC = () => {
     sports,
     teams,
     events,
+    vpnMode,
+    vpnRegion,
+    updateVpnSettings,
     toggleFavoriteSport,
     toggleFavoriteTeam,
     updateNotificationPreferences,
@@ -19,6 +31,7 @@ export const ProfilePage: React.FC = () => {
 
   const [nameInput, setNameInput] = useState(profile?.displayName || '');
   const [savedNotice, setSavedNotice] = useState(false);
+  const [vpnSavedNotice, setVpnSavedNotice] = useState(false);
 
   if (loading) {
     return <div className="h-64 rounded-2xl bg-[#151E2B] animate-pulse" />;
@@ -36,6 +49,18 @@ export const ProfilePage: React.FC = () => {
     await updateDisplayName(nameInput.trim());
     setSavedNotice(true);
     setTimeout(() => setSavedNotice(false), 2500);
+  };
+
+  const handleToggleVpnMode = async () => {
+    await updateVpnSettings(!vpnMode, vpnRegion);
+    setVpnSavedNotice(true);
+    setTimeout(() => setVpnSavedNotice(false), 2500);
+  };
+
+  const handleChangeVpnRegion = async (nextRegion: VpnRegion) => {
+    await updateVpnSettings(vpnMode, nextRegion);
+    setVpnSavedNotice(true);
+    setTimeout(() => setVpnSavedNotice(false), 2500);
   };
 
   return (
@@ -78,6 +103,91 @@ export const ProfilePage: React.FC = () => {
         {savedNotice && (
           <p className="text-xs text-[#16D98A] inline-flex items-center gap-1">
             <Check className="w-3.5 h-3.5" /> Profile updated
+          </p>
+        )}
+      </section>
+
+      {/* Streaming Network & VPN Mode */}
+      <section className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className={`p-2 rounded-xl border ${vpnMode ? 'bg-[#16D98A]/15 border-[#16D98A]/30 text-[#16D98A]' : 'bg-[#00B7FF]/10 border-[#00B7FF]/25 text-[#00B7FF]'}`}>
+              <ShieldCheck className="w-4 h-4" />
+            </span>
+            <div>
+              <h2 className="font-display text-lg font-bold text-white">Streaming Network &amp; VPN Mode</h2>
+              <p className="text-xs text-[#A5B1C2]">
+                Configure stream proxy routing, regional headers, and extended retry timeouts for reliable playback.
+              </p>
+            </div>
+          </div>
+          <span
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border ${
+              vpnMode
+                ? 'bg-[#16D98A]/15 text-[#16D98A] border-[#16D98A]/30'
+                : 'bg-white/5 text-[#A5B1C2] border-white/10'
+            }`}
+          >
+            {vpnMode ? `RELAY ACTIVE (${vpnRegion.toUpperCase()})` : 'DIRECT STREAMING'}
+          </span>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#101722] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-white">VPN Mode</p>
+            <p className="text-xs text-[#A5B1C2]">
+              Routes HLS manifests and video segments through the cloud relay with extended network timeouts (20s/25s) and automatic retries.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={vpnMode}
+            aria-label="Toggle VPN Mode"
+            onClick={handleToggleVpnMode}
+            className={`relative inline-flex h-7 w-13 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-[#00B7FF]/60 ${
+              vpnMode
+                ? 'bg-[#16D98A] border-[#16D98A]'
+                : 'bg-[#1A2434] border-white/15'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                vpnMode ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#101722] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <Globe className="w-4 h-4 text-[#00B7FF] shrink-0" />
+            <div>
+              <label htmlFor="profile-vpn-region" className="text-sm font-semibold text-white block">
+                VPN Relay Region
+              </label>
+              <p className="text-xs text-[#A5B1C2]">
+                Select preferred relay edge node for streaming requests.
+              </p>
+            </div>
+          </div>
+          <select
+            id="profile-vpn-region"
+            value={vpnRegion}
+            onChange={(e) => handleChangeVpnRegion(e.target.value as VpnRegion)}
+            className="h-10 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-xs font-semibold text-white focus:outline-none focus:border-[#00B7FF] cursor-pointer"
+          >
+            {VPN_REGION_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value} className="bg-[#101722] text-white">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {vpnSavedNotice && (
+          <p className="text-xs text-[#16D98A] inline-flex items-center gap-1">
+            <Check className="w-3.5 h-3.5" /> VPN network settings updated
           </p>
         )}
       </section>

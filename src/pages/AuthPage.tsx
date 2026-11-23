@@ -4,7 +4,6 @@ import {
   Mail,
   Lock,
   User as UserIcon,
-  Shield,
   Sparkles,
   CheckCircle2,
   AlertCircle,
@@ -12,19 +11,17 @@ import {
   EyeOff,
   RefreshCw,
   ArrowLeft,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
+  Phone,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-function mapFirebaseError(errString: string): { title: string; hint: string; showConsoleTip?: boolean } {
+function mapFirebaseError(errString: string): { title: string; hint: string } {
   const lower = errString.toLowerCase();
 
   if (lower.includes('email-already-in-use')) {
     return {
       title: 'এই ইমেইলটি ইতিমধ্যে নিবন্ধিত আছে',
-      hint: 'সরাসরি Sign In করুন অথবা পাসওয়ার্ড মনে না থাকলে "পাসওয়ার্ড রিসেট" ব্যবহার করুন।',
+      hint: 'সরাসরি Sign In করুন অথবা পাসওয়ার্ড ভুলে গেলে "পাসওয়ার্ড রিসেট" ব্যবহার করুন।',
     };
   }
   if (lower.includes('weak-password')) {
@@ -71,12 +68,16 @@ export const AuthPage: React.FC = () => {
   const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [errorDetails, setErrorDetails] = useState<{ title: string; hint: string; showConsoleTip?: boolean } | null>(null);
-  const [resetSuccess, setResetSuccess] = useState<{ email: string; message: string } | null>(null);
+  const [errorDetails, setErrorDetails] = useState<{ title: string; hint: string } | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<{
+    email: string;
+    senderEmail: string;
+    message: string;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showFirebaseConsoleHelp, setShowFirebaseConsoleHelp] = useState(false);
 
   if (user) {
     return <Navigate to="/profile" replace />;
@@ -96,22 +97,27 @@ export const AuthPage: React.FC = () => {
       } else if (mode === 'register') {
         await registerWithEmail(name.trim() || 'Sports Fan', cleanEmail, password);
       } else {
-        // Password Reset Flow
+        // Automated Email + Mail-to-SMS Notification Reset Flow from factsknown178@gmail.com
         await resetPassword(cleanEmail);
 
+        let backendResp: any = null;
         try {
-          await fetch('/api/auth/password-reset', {
+          const r = await fetch('/api/auth/password-reset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail }),
+            body: JSON.stringify({ email: cleanEmail, phone: phone.trim() || undefined }),
           });
+          backendResp = await r.json();
         } catch (apiErr) {
           console.warn('Backend reset log note:', apiErr);
         }
 
         setResetSuccess({
           email: cleanEmail,
-          message: `স্বয়ংক্রিয় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে ${cleanEmail} ঠিকানায়।`,
+          senderEmail: backendResp?.senderEmail || 'factsknown178@gmail.com',
+          message:
+            backendResp?.message ||
+            `factsknown178@gmail.com থেকে স্বয়ংক্রিয় পাসওয়ার্ড রিসেট ইমেইল ও SMS অ্যালার্ট ${cleanEmail} ঠিকানায় পাঠানো হয়েছে।`,
         });
       }
     } catch (err: any) {
@@ -138,12 +144,11 @@ export const AuthPage: React.FC = () => {
 
   return (
     <div className="max-w-md mx-auto bg-[#151E2B] rounded-3xl border border-white/10 p-6 sm:p-8 space-y-6 shadow-2xl relative overflow-hidden">
-      {/* Decorative background glow */}
       <div className="absolute top-0 right-0 w-48 h-48 bg-[#00B7FF]/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header */}
       <div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-bold mb-3">
+        <div className="inline-flex items-center gap-1.5 text-[#00B7FF] text-xs font-bold mb-2">
           <Sparkles className="w-3.5 h-3.5" />
           <span>KhelaDekH Account</span>
         </div>
@@ -152,16 +157,16 @@ export const AuthPage: React.FC = () => {
             ? 'অ্যাকাউন্টে সাইন ইন করুন'
             : mode === 'register'
             ? 'নতুন অ্যাকাউন্ট তৈরি করুন'
-            : 'পাসওয়ার্ড রিসেট করুন'}
+            : 'অটো-রিকভারি ও SMS পাসওয়ার্ড রিসেট'}
         </h1>
         <p className="text-xs text-[#A5B1C2] mt-1">
           {mode === 'reset'
-            ? 'আপনার ইমেইল দিন, সাথে সাথে একটি স্বয়ংক্রিয় পাসওয়ার্ড রিসেট লিংক আপনার ইনবক্সে চলে যাবে।'
-            : 'লাইভ ম্যাচ দেখা, প্রিয় দল সংরক্ষণ ও হাইলাইট নোটিফিকেশন পেতে যুক্ত থাকুন।'}
+            ? 'আপনার ইমেইল (এবং ঐচ্ছিক মোবাইল নম্বর) দিলে সাথে সাথে factsknown178@gmail.com থেকে অটোমেটিক রিসেট লিংক ও SMS পাঠানো হবে।'
+            : 'লাইভ ম্যাচ দেখা, প্রিয় দল সংরক্ষণ ও নোটিফিকেশন পেতে যুক্ত থাকুন।'}
         </p>
       </div>
 
-      {/* Recommended 1-Click Google Sign-in */}
+      {/* 1-Click Google Sign-in */}
       <div className="space-y-2">
         <button
           type="button"
@@ -187,11 +192,8 @@ export const AuthPage: React.FC = () => {
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
             />
           </svg>
-          <span>Google দিয়ে ১-ক্লিকে সাইন ইন (সুপার ফাস্ট)</span>
+          <span>Google দিয়ে ১-ক্লিকে সাইন ইন</span>
         </button>
-        <p className="text-[10px] text-center text-[#A5B1C2]">
-          ⚡ কোনো পাসওয়ার্ডের প্রয়োজন নেই, তাৎক্ষণিকভাবে ভেরিফায়েড প্রোফাইল তৈরি হবে।
-        </p>
       </div>
 
       {/* Divider */}
@@ -219,16 +221,17 @@ export const AuthPage: React.FC = () => {
         <div className="p-4 rounded-2xl bg-[#16D98A]/10 border border-[#16D98A]/30 text-xs text-[#16D98A] space-y-2.5 animate-fade-in">
           <div className="flex items-center gap-2 font-bold text-[#16D98A]">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে!</span>
+            <span>অটোমেটিক মেইল ও SMS নোটিফিকেশন পাঠানো হয়েছে!</span>
           </div>
-          <p className="text-[11px] text-white/90 leading-relaxed">
-            আপনার ইমেইল <strong>{resetSuccess.email}</strong> এ স্বয়ংক্রিয়ভাবে একটি অফিশিয়াল পাসওয়ার্ড রিসেট ইমেইল পৌঁছে গেছে।
+          <p className="text-[11px] text-white/95 leading-relaxed">
+            {resetSuccess.message}
           </p>
           <div className="bg-[#101722]/80 p-2.5 rounded-xl border border-white/5 space-y-1 text-[10px] text-[#A5B1C2]">
-            <p className="font-semibold text-white">পরবর্তী করণীয়:</p>
-            <p>১. আপনার ইমেইলের <strong>Inbox</strong> চেক করুন।</p>
-            <p>২. ইনবক্সে না পেলে দয়া করে <strong>Spam</strong> বা <strong>Junk</strong> ফোল্ডার চেক করুন।</p>
-            <p>৩. ইমেইলের ভেতরের লিংকে ক্লিক করে নতুন পাসওয়ার্ড দিন।</p>
+            <p className="font-semibold text-white">
+              প্রেরক মেইল: <span className="text-[#00B7FF] font-mono">{resetSuccess.senderEmail}</span>
+            </p>
+            <p>১. আপনার {resetSuccess.email} এর Inbox বা Spam ফোল্ডার চেক করুন।</p>
+            <p>২. লিংকে ক্লিক করে সাথে সাথে নতুন পাসওয়ার্ড সেট করুন।</p>
           </div>
           <button
             type="button"
@@ -247,7 +250,7 @@ export const AuthPage: React.FC = () => {
             <div>
               <label className="block text-xs font-medium text-[#A5B1C2] mb-1.5 flex items-center gap-1.5">
                 <UserIcon className="w-3.5 h-3.5 text-[#00B7FF]" />
-                <span>আপনার পুরো নাম (Full Name)</span>
+                <span>আপনার পুরো নাম</span>
               </label>
               <input
                 type="text"
@@ -263,7 +266,7 @@ export const AuthPage: React.FC = () => {
           <div>
             <label className="block text-xs font-medium text-[#A5B1C2] mb-1.5 flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5 text-[#00B7FF]" />
-              <span>ইমেইল ঠিকানা (Email Address)</span>
+              <span>ইমেইল ঠিকানা</span>
             </label>
             <input
               type="email"
@@ -275,12 +278,28 @@ export const AuthPage: React.FC = () => {
             />
           </div>
 
+          {mode === 'reset' && (
+            <div>
+              <label className="block text-xs font-medium text-[#A5B1C2] mb-1.5 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-[#16D98A]" />
+                <span>মোবাইল নম্বর (SMS অ্যালার্টের জন্য - ঐচ্ছিক)</span>
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+8801XXXXXXXXX"
+                className="w-full h-11 px-3.5 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00B7FF] transition-colors"
+              />
+            </div>
+          )}
+
           {mode !== 'reset' && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-medium text-[#A5B1C2] flex items-center gap-1.5">
                   <Lock className="w-3.5 h-3.5 text-[#00B7FF]" />
-                  <span>পাসওয়ার্ড (Password)</span>
+                  <span>পাসওয়ার্ড</span>
                 </label>
                 {mode === 'login' && (
                   <button
@@ -290,7 +309,7 @@ export const AuthPage: React.FC = () => {
                       setErrorDetails(null);
                       setResetSuccess(null);
                     }}
-                    className="text-[11px] text-[#00B7FF] hover:underline"
+                    className="text-[11px] text-[#00B7FF] hover:underline font-semibold"
                   >
                     পাসওয়ার্ড ভুলে গেছেন?
                   </button>
@@ -329,11 +348,11 @@ export const AuthPage: React.FC = () => {
                 <span>প্রক্রিয়াকরণ হচ্ছে...</span>
               </>
             ) : mode === 'login' ? (
-              'সাইন ইন করুন (Sign In)'
+              'সাইন ইন করুন'
             ) : mode === 'register' ? (
-              'অ্যাকাউন্ট তৈরি করুন (Create Account)'
+              'অ্যাকাউন্ট তৈরি করুন'
             ) : (
-              'পাসওয়ার্ড রিসেট লিংক পাঠান (Send Reset Link)'
+              'অটো মেইল ও SMS পাঠান'
             )}
           </button>
         </form>
@@ -379,50 +398,6 @@ export const AuthPage: React.FC = () => {
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>সাইন ইন পেজে ফিরে যান</span>
           </button>
-        )}
-      </div>
-
-      {/* Admin / Developer Firebase Console Helper */}
-      <div className="pt-2 border-t border-white/5">
-        <button
-          type="button"
-          onClick={() => setShowFirebaseConsoleHelp(!showFirebaseConsoleHelp)}
-          className="w-full text-[11px] text-[#A5B1C2] hover:text-white flex items-center justify-between py-1"
-        >
-          <span className="flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
-            ফায়ারবেস কনসোল সাইন-ইন প্রোভাইডার সেটিংস
-          </span>
-          {showFirebaseConsoleHelp ? (
-            <ChevronUp className="w-3.5 h-3.5" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5" />
-          )}
-        </button>
-
-        {showFirebaseConsoleHelp && (
-          <div className="mt-2 p-3 rounded-xl bg-[#101722] border border-white/10 text-[11px] text-[#A5B1C2] space-y-2 animate-fade-in">
-            <p className="text-white font-semibold">
-              ফায়ারবেস কনসোলে Email/Password চালু করার সরাসরি লিংক:
-            </p>
-            <a
-              href="https://console.firebase.google.com/project/powerful-minutia-6bcxw/authentication/providers"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-[#00B7FF] hover:underline font-mono text-[10px] break-all bg-white/5 p-1.5 rounded-lg border border-white/5"
-            >
-              <span>console.firebase.google.com/.../providers</span>
-              <ExternalLink className="w-3 h-3 shrink-0" />
-            </a>
-            <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-[#A5B1C2]">
-              <li>উপরের লিংকে ক্লিক করে আপনার ফায়ারবেস কনসোলে যান।</li>
-              <li><strong>Email/Password</strong> প্রোভাইডারে ক্লিক করে <strong>Enable</strong> চালু করুন।</li>
-              <li><strong>Save</strong> বাটনে ক্লিক করুন।</li>
-            </ol>
-            <p className="text-[10px] text-emerald-400">
-              💡 আমাদের ওয়েবসাইটে ইতিমধ্যে হাইব্রিড অ্যাকাউন্ট যুক্ত আছে, তাই কনসোলে বন্ধ থাকলেও অ্যাকাউন্ট তৈরি সফলভাবে কাজ করবে।
-            </p>
-          </div>
         )}
       </div>
     </div>

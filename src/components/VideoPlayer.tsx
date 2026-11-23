@@ -19,12 +19,11 @@ import {
   ExternalLink,
   ShieldCheck,
   Check,
-  Download,
-  Smartphone,
+  Globe,
 } from 'lucide-react';
-import { StreamServer } from '../types';
-import { usePWAInstall } from '../hooks/usePWAInstall';
-import { AppDownloadGateModal } from './AppDownloadGateModal';
+import { StreamServer, VpnRegion } from '../types';
+import { VERIFIED_SPORTS_STREAMS } from '../data/captainsData';
+import { useData } from '../context/DataContext';
 
 interface VideoPlayerProps {
   src?: string;
@@ -42,61 +41,73 @@ export interface ResolutionOption {
   height?: number;
 }
 
-export const VERIFIED_HLS_STREAM_1 = 'https://live-par-2-abr.livepush.io/live/bigbuckbunnyclip/index.m3u8';
-export const VERIFIED_HLS_STREAM_2 = 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8';
-export const VERIFIED_HLS_STREAM_3 = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
-export const VERIFIED_HLS_STREAM_4 = 'https://assets.afcdn.com/video49/20210722/v_645516.m3u8';
-export const VERIFIED_MP4_STREAM_5 = 'https://www.w3schools.com/html/mov_bbb.mp4';
+export const VERIFIED_HLS_STREAM_1 = VERIFIED_SPORTS_STREAMS.GTV_LIVE;
+export const VERIFIED_HLS_STREAM_2 = VERIFIED_SPORTS_STREAMS.ACC_SPORTS;
+export const VERIFIED_HLS_STREAM_3 = VERIFIED_SPORTS_STREAMS.ACI_SPORT_TV;
+export const VERIFIED_HLS_STREAM_4 = VERIFIED_SPORTS_STREAMS.ANTENA_SPORT;
+export const VERIFIED_MP4_STREAM_5 = VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT;
 
 const DEFAULT_BROADCAST_STREAM = VERIFIED_HLS_STREAM_1;
 
+const isBlockedNonSportStream = (url?: string): boolean => {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  return (
+    u.includes('listtype=search') ||
+    u.includes('bigbuckbunny') ||
+    u.includes('bipbop') ||
+    u.includes('x36xhzz') ||
+    u.includes('mov_bbb') ||
+    u.includes('v_645516')
+  );
+};
+
 export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
-  // If primaryUrl contains deprecated YouTube listType=search or is empty, use verified stream
   const cleanPrimary =
-    primaryUrl && primaryUrl.trim() && !primaryUrl.includes('listType=search')
+    primaryUrl && primaryUrl.trim() && !isBlockedNonSportStream(primaryUrl)
       ? primaryUrl.trim()
       : VERIFIED_HLS_STREAM_1;
 
   return [
     {
       id: 'server-1',
-      name: 'সার্ভার ১ (আল্ট্রা এইচডি ১০৮০p)',
+      name: 'KhelaDekH সার্ভার ১ (আল্ট্রা এইচডি ১০৮০p)',
       quality: '1080p Ultra HD',
       url: cleanPrimary,
       badge: 'সবচেয়ে দ্রুত ও স্পষ্ট',
-      description: 'সর্বোচ্চ স্পিড ও ক্রিস্টাল ক্লিয়ার স্পষ্ট পিকচার কোয়ালিটি। বাফারিং ছাড়া লাইভ ব্রডকাস্ট।',
+      description: 'সর্বোচ্চ স্পিড ও ক্রিস্টাল ক্লিয়ার লাইভ স্পোর্টস ব্রডকাস্ট (কোনো বিজ্ঞাপন ছাড়া)।',
     },
     {
       id: 'server-2',
-      name: 'সার্ভার ২ (স্ট্যান্ডার্ড এইচডি ৭২০p)',
+      name: 'KhelaDekH সার্ভার ২ (গ্লোবাল এইচডি ৭২০p)',
       quality: '720p HD',
       url: VERIFIED_HLS_STREAM_2,
       badge: 'স্থিতিশীল ব্যাকআপ',
-      description: 'স্থিতিশীল দ্বিতীয় লাইভ ফিড (অ্যাডাপটিভ বিটরেট ব্যাকআপ)।',
+      description: 'আন্তর্জাতিক স্পোর্টস নেটওয়ার্ক থেকে সংগৃহীত দ্বিতীয় লাইভ ফিড।',
     },
     {
       id: 'server-3',
-      name: 'সার্ভার ৩ (ডাটা সেভার ৪৮০p)',
+      name: 'KhelaDekH সার্ভার ৩ (ডাটা সেভার ৪৮০p)',
       quality: '480p SD',
       url: VERIFIED_HLS_STREAM_3,
       badge: 'কম মেগাবাইট খরচ',
-      description: 'কম ব্যান্ডউইথ খরচ করে খেলা দেখার জন্য হাই-স্পিড ডাটা সেভার।',
+      description: 'কম ব্যান্ডউইথ খরচ করে খেলা দেখার জন্য হাই-স্পিড স্পোর্টস সার্ভার।',
     },
     {
       id: 'server-4',
-      name: 'সার্ভার ৪ (অল্টারনেটিভ মিরর ৩৬০p)',
-      quality: '360p Mirror',
+      name: 'KhelaDekH সার্ভার ৪ (ইউরোপ মিরর)',
+      quality: 'HD Mirror',
       url: VERIFIED_HLS_STREAM_4,
       badge: 'বিকল্প মিরর',
-      description: 'বিকল্প মিরর সার্ভার। দুর্বল ইন্টারনেট সংযোগের জন্য উপযুক্ত।',
+      description: 'দুর্বল ইন্টারনেট সংযোগের জন্য উপযুক্ত সরাসরি স্পোর্টস মিরর।',
     },
     {
       id: 'server-5',
-      name: 'সার্ভার ৫ (ইমার্জেন্সি গ্লোবাল ফিড)',
-      quality: 'Direct Stream',
+      name: 'KhelaDekH সার্ভার ৫ (ইমার্জেন্সি স্পোর্টস ফিড)',
+      quality: 'Direct Sports',
       url: VERIFIED_MP4_STREAM_5,
       badge: 'ইমার্জেন্সি ব্যাকআপ',
-      description: 'পিক আওয়ারে অন্য সার্ভার জ্যাম থাকলে জরুরি ডিরেক্ট ব্যাকআপ ফিড।',
+      description: 'পিক আওয়ারে অন্য সার্ভার ব্যস্ত থাকলে জরুরি লাইভ স্পোর্টস ব্যাকআপ ফিড।',
     },
   ];
 };
@@ -122,18 +133,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const hlsRef = useRef<Hls | null>(null);
   const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const { isInstalled, enterAppMode } = usePWAInstall();
-  const [showGateModal, setShowGateModal] = useState(false);
 
-  // Active servers configuration: ensure a full 5-tier server setup is ALWAYS available
+  // Real-time second-by-second broadcast ticker
+  const [liveTimeStr, setLiveTimeStr] = useState<string>(() =>
+    new Date().toLocaleTimeString('en-GB', { hour12: false })
+  );
+
+  useEffect(() => {
+    const clock = setInterval(() => {
+      setLiveTimeStr(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+    }, 1000);
+    return () => clearInterval(clock);
+  }, []);
+
+  // Active servers configuration: sanitize non-sports URLs & ensure 5-tier sports setup
   const baseDefaults = buildDefaultServers(src);
   const activeServers: StreamServer[] = React.useMemo(() => {
-    if (servers && servers.length >= 5) {
-      return servers;
-    }
     if (servers && servers.length > 0) {
-      // Merge custom servers with verified defaults for missing servers
-      return baseDefaults.map((def, idx) => servers[idx] || def);
+      const sanitized = servers.map((srv, idx) =>
+        isBlockedNonSportStream(srv.url) ? baseDefaults[idx % baseDefaults.length] : srv
+      );
+      if (sanitized.length >= 5) return sanitized;
+      return baseDefaults.map((def, idx) => sanitized[idx] || def);
     }
     return baseDefaults;
   }, [servers, baseDefaults]);
@@ -149,12 +170,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const currentServer = activeServers.find((s) => s.id === selectedServerId) || activeServers[0];
   const rawStream = (currentServer?.url && currentServer.url.trim()) || DEFAULT_BROADCAST_STREAM;
-  // If the stream contains deprecated search embed which causes 'Video unavailable', fallback to verified stream
-  const activeStream = rawStream.includes('listType=search') ? VERIFIED_HLS_STREAM_1 : rawStream;
+  const activeStream = isBlockedNonSportStream(rawStream) ? VERIFIED_HLS_STREAM_1 : rawStream;
 
   // Determine if stream is an embed or direct video
   const isYouTube =
     activeStream.includes('youtube.com') ||
+    activeStream.includes('youtube-nocookie.com') ||
     activeStream.includes('youtu.be');
   const isEmbed =
     isYouTube ||
@@ -162,7 +183,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     activeStream.includes('/embed/') ||
     activeStream.includes('dailymotion.com');
 
-  const isHls = !isEmbed && (activeStream.includes('.m3u8') || activeStream.includes('m3u8?'));
+  const isHls =
+    !isEmbed &&
+    (activeStream.includes('.m3u8') ||
+      activeStream.includes('m3u8?') ||
+      activeStream.includes('/api/vpn-relay'));
   const isDirectVideo =
     !isEmbed &&
     (isHls ||
@@ -182,6 +207,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [currentResolution, setCurrentResolution] = useState<string>(initialResolution);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [hlsLevels, setHlsLevels] = useState<{ id: string; height: number; index: number }[]>([]);
+  const {
+    vpnMode: globalVpnMode,
+    vpnRegion: globalVpnRegion,
+    updateVpnSettings,
+    getStreamNetworkConfig,
+  } = useData();
+
+  const [vpnActive, setVpnActive] = useState<boolean>(globalVpnMode);
+  const [vpnRegion, setVpnRegion] = useState<VpnRegion>(globalVpnRegion);
+
+  useEffect(() => {
+    setVpnActive(globalVpnMode);
+  }, [globalVpnMode]);
+
+  useEffect(() => {
+    setVpnRegion(globalVpnRegion);
+  }, [globalVpnRegion]);
+
+  const networkConfig = React.useMemo(
+    () => getStreamNetworkConfig(activeStream, vpnActive, vpnRegion),
+    [activeStream, vpnActive, vpnRegion, getStreamNetworkConfig]
+  );
+
+  const playbackStreamUrl = isDirectVideo ? networkConfig.resolvedUrl : activeStream;
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -240,12 +289,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setIsLoading(true);
 
     const video = videoRef.current;
-    if (!video || !activeStream || !isDirectVideo) {
+    if (!video || !playbackStreamUrl || !isDirectVideo) {
       setIsLoading(false);
       return;
     }
 
-    // Set muted initially to satisfy browser autoplay security policy
     video.muted = isMuted;
 
     if (isHls && Hls.isSupported()) {
@@ -255,15 +303,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
 
       const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
+        ...networkConfig.hlsConfig,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
       });
       hlsRef.current = hls;
 
-      hls.loadSource(activeStream);
+      hls.loadSource(playbackStreamUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
@@ -279,7 +325,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setHlsLevels(parsed);
         }
 
-        // Try autoplaying muted
         video.muted = true;
         video
           .play()
@@ -293,18 +338,45 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           });
       });
 
+      let networkRetryCount = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
           console.warn('HLS fatal error encountered:', data.type);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
+              networkRetryCount += 1;
+              if (!vpnActive) {
+                hls.destroy();
+                setVpnActive(true);
+                showToast('জিও-ব্লক/নেটওয়ার্ক বাধা শনাক্ত: সার্ভার VPN টানেলে অটো-কানেক্ট হচ্ছে...');
+                return;
+              }
+              if (networkRetryCount <= 1) {
+                hls.startLoad();
+              } else {
+                hls.destroy();
+                const curIdx = activeServers.findIndex((s) => s.id === selectedServerId);
+                const nextIdx = (curIdx + 1) % activeServers.length;
+                if (activeServers.length > 1 && nextIdx !== curIdx) {
+                  const nextServer = activeServers[nextIdx];
+                  setSelectedServerId(nextServer.id);
+                  showToast(`ব্যাকআপ সার্ভারে স্থানান্তর: ${nextServer.name}`);
+                } else {
+                  setHasPlaybackError(true);
+                  setIsLoading(false);
+                }
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError();
               break;
             default: {
               hls.destroy();
+              if (!vpnActive) {
+                setVpnActive(true);
+                showToast('VPN সার্ভার রুট চালু করা হচ্ছে...');
+                return;
+              }
               const curIdx = activeServers.findIndex((s) => s.id === selectedServerId);
               const nextIdx = (curIdx + 1) % activeServers.length;
               if (activeServers.length > 1 && nextIdx !== curIdx) {
@@ -326,8 +398,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current = null;
       };
     } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native Safari HLS
-      video.src = activeStream;
+      video.src = playbackStreamUrl;
       video.muted = true;
       video
         .play()
@@ -340,8 +411,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setIsLoading(false);
         });
     } else {
-      // Direct MP4 / WebM
-      video.src = activeStream;
+      video.src = playbackStreamUrl;
       video.muted = true;
       video
         .play()
@@ -354,7 +424,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setIsLoading(false);
         });
     }
-  }, [activeStream, isHls, isDirectVideo]);
+  }, [playbackStreamUrl, isHls, isDirectVideo, networkConfig]);
 
   // Auto-fullscreen trigger if requested
   useEffect(() => {
@@ -546,13 +616,57 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         })}
       </div>
 
-      {/* Selected Server Description & External View Link */}
-      <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/5 text-[11px] text-[#A5B1C2] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Selected Server Description, VPN Relay Switch & External View Link */}
+      <div className="px-3 py-2.5 rounded-xl bg-white/5 border border-white/5 text-[11px] text-[#A5B1C2] flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
         <div>
           <strong className="text-white">{currentServer.name}:</strong>{' '}
           {currentServer.description || currentServer.quality}
         </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+          {!isEmbed && (
+            <div className="flex items-center gap-1.5 bg-[#0B1019] border border-white/10 rounded-lg p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !vpnActive;
+                  setVpnActive(next);
+                  updateVpnSettings(next, vpnRegion);
+                  showToast(
+                    next
+                      ? `সার্ভার VPN টানেল সংযুক্ত হয়েছে (${vpnRegion.toUpperCase()})`
+                      : 'সরাসরি স্ট্রিম মোডে ফিরে যাওয়া হয়েছে'
+                  );
+                }}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all ${
+                  vpnActive
+                    ? 'bg-[#16D98A] text-[#080B12]'
+                    : 'bg-white/10 text-white hover:bg-[#00B7FF]/20 hover:text-[#00B7FF]'
+                }`}
+                title="স্ট্রিম ব্লক হলে বা স্পিডের জন্য সার্ভার VPN টানেল চালু/বন্ধ করুন"
+              >
+                <ShieldCheck className="w-3 h-3" />
+                <span>{vpnActive ? 'VPN সংযুক্ত' : 'VPN কানেক্ট'}</span>
+              </button>
+              <select
+                value={vpnRegion}
+                onChange={(e) => {
+                  const reg = e.target.value as VpnRegion;
+                  setVpnRegion(reg);
+                  setVpnActive(true);
+                  updateVpnSettings(true, reg);
+                  showToast(`VPN সার্ভার রুট: ${reg.toUpperCase()} সংযুক্ত`);
+                }}
+                aria-label="VPN Region"
+                className="bg-transparent text-[10px] font-mono text-[#00B7FF] outline-none pr-1 cursor-pointer"
+              >
+                <option value="auto" className="bg-[#101722]">Auto Relay</option>
+                <option value="sg" className="bg-[#101722]">Singapore VPN</option>
+                <option value="uk" className="bg-[#101722]">UK VPN</option>
+                <option value="eu" className="bg-[#101722]">Europe VPN</option>
+                <option value="us" className="bg-[#101722]">USA VPN</option>
+              </select>
+            </div>
+          )}
           <a
             href={activeStream}
             target="_blank"
@@ -563,8 +677,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <span>সরাসরি লিংক</span>
             <ExternalLink className="w-3 h-3" />
           </a>
-          <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded">
-            {isEmbed ? '🌐 Embed Stream' : isHls ? '⚡ HLS Live Feed' : '🎥 Direct Video'}
+          <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded flex items-center gap-1">
+            <Globe className="w-3 h-3" />
+            {isEmbed ? 'Embed Stream' : vpnActive ? 'VPN Relay HLS' : isHls ? 'HLS Live Feed' : 'Direct Video'}
           </span>
         </div>
       </div>
@@ -789,23 +904,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         )}
 
-        {/* Top Bar: Brand, Live Badge, and Match Title */}
+        {/* Top Bar: KhelaDekH LIVE Broadcast Watermark & Second-by-Second Clock */}
         <div
           className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between pointer-events-none transition-opacity duration-300 z-20 ${
-            showControls ? 'opacity-100' : 'opacity-0'
+            showControls ? 'opacity-100' : 'opacity-80'
           }`}
         >
           <div className="flex items-center gap-3">
-            <span className="font-display text-xs font-extrabold tracking-tight text-white/90 drop-shadow">
+            <span className="font-display text-xs sm:text-sm font-extrabold tracking-tight text-white drop-shadow">
               Khela<span className="text-[#00B7FF]">DekH</span>
             </span>
-            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#16D98A]/20 border border-[#16D98A]/40 text-[#16D98A] text-[10px] font-mono font-bold tracking-wider uppercase">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#16D98A] animate-pulse" />
-              LIVE
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-600/90 text-white text-[10px] font-mono font-bold tracking-wider uppercase shadow">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+              LIVE · {liveTimeStr}
             </div>
           </div>
 
-          <span className="text-xs font-semibold text-white/90 truncate max-w-[200px] sm:max-w-md drop-shadow">
+          <span className="text-xs font-semibold text-white/95 truncate max-w-[180px] sm:max-w-md drop-shadow">
             {title}
           </span>
         </div>
@@ -1010,11 +1125,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
       </div>
-      <AppDownloadGateModal
-        isOpen={showGateModal}
-        onClose={() => setShowGateModal(false)}
-        matchTitle={title}
-      />
     </div>
   );
 };

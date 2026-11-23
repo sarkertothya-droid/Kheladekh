@@ -17,6 +17,8 @@ export interface Team {
   country?: string;
   description?: string;
   logoUrl?: string;
+  captain?: string;
+  captainPhotoUrl?: string;
 }
 
 export interface Competition {
@@ -43,6 +45,13 @@ export interface SportEvent {
   sportId: string;
   competitionId: string;
   teamIds: string[];
+  teamAName?: string;
+  teamBName?: string;
+  teamACaptain?: string;
+  teamBCaptain?: string;
+  teamACaptainPhoto?: string;
+  teamBCaptainPhoto?: string;
+  venue?: string;
   description: string;
   eventDate: string;
   eventTime: string;
@@ -107,6 +116,8 @@ export interface InAppAlert {
   read: boolean;
 }
 
+export type VpnRegion = 'auto' | 'sg' | 'uk' | 'eu' | 'us';
+
 export interface UserProfile {
   uid: string;
   displayName: string;
@@ -116,6 +127,8 @@ export interface UserProfile {
   favoriteTeams: string[];
   savedEvents: string[];
   notificationPreferences: NotificationPreferences;
+  vpnMode?: boolean;
+  vpnRegion?: VpnRegion;
   createdAt: string;
 }
 
@@ -208,6 +221,7 @@ export interface SupportChatMessage {
   senderName: string;
   senderRole: 'user' | 'support' | 'bot';
   text: string;
+  sources?: { title: string; url: string }[];
   createdAt: string;
 }
 

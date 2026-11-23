@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   collection,
   deleteDoc,
@@ -32,8 +32,25 @@ import {
   Sport,
   SportEvent,
   Team,
+  VpnRegion,
 } from '../types';
 import { useAuth } from './AuthContext';
+
+export interface StreamNetworkConfig {
+  resolvedUrl: string;
+  isRelayed: boolean;
+  headers: Record<string, string>;
+  hlsConfig: {
+    enableWorker: boolean;
+    lowLatencyMode: boolean;
+    backBufferLength: number;
+    manifestLoadingTimeOut: number;
+    manifestLoadingMaxRetry: number;
+    fragLoadingTimeOut: number;
+    fragLoadingMaxRetry: number;
+    xhrSetup?: (xhr: XMLHttpRequest, url: string) => void;
+  };
+}
 
 interface DataContextType {
   sports: Sport[];
@@ -49,6 +66,10 @@ interface DataContextType {
   lastAutoSyncTime: string | null;
   nextSyncSeconds: number;
   autoSyncIntervalSeconds: number;
+  vpnMode: boolean;
+  vpnRegion: VpnRegion;
+  updateVpnSettings: (enabled: boolean, region?: VpnRegion) => Promise<void>;
+  getStreamNetworkConfig: (rawUrl: string, overrideVpn?: boolean, overrideRegion?: VpnRegion) => StreamNetworkConfig;
   syncLiveSportsFromGoogle: (silent?: boolean) => Promise<void>;
   toggleFavoriteSport: (sportId: string) => Promise<void>;
   toggleFavoriteTeam: (teamId: string) => Promise<void>;
@@ -72,16 +93,59 @@ interface DataContextType {
   saveSettings: (newSettings: SiteSettings) => Promise<void>;
 }
 
+import { resolveMatchCaptains, VERIFIED_SPORTS_STREAMS } from '../data/captainsData';
+
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-const AUTO_SYNC_INTERVAL_SEC = 300; // Exactly 5 minutes (300 seconds) as requested
+const AUTO_SYNC_INTERVAL_SEC = 60; // Continuous 1-minute Real-Time Sports auto-sync
+const ADMIN_EMAIL = 'factsknown178@gmail.com';
+const SYNC_STORAGE_KEY = 'kheladekh_real_sports_v3';
+
+const LEGACY_FAKE_EVENT_PREFIXES = [
+  'ban-vs-wi-live-',
+  'rma-vs-mci-live-',
+  'ind-vs-aus-live-',
+  'lal-vs-gsw-upcoming-',
+  'cricket-ban-wi-',
+  'cricket-ind-aus-',
+  'football-rma-bar-',
+  'tennis-alc-sin-',
+  'football-mci-liv-',
+  'basketball-lal-gsw-',
+  'football-ars-bay-',
+  'cricket-ban-sl-',
+  'match-',
+];
+
+const isLegacyFakeEventId = (id: string) =>
+  LEGACY_FAKE_EVENT_PREFIXES.some((prefix) => id.startsWith(prefix));
+
+const isCartoonStream = (url?: string) =>
+  !url ||
+  url.includes('bigbuckbunny') ||
+  url.includes('bipbop') ||
+  url.includes('x36xhzz') ||
+  url.includes('mov_bbb') ||
+  url.includes('v_645516');
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile, refreshProfile } = useAuth();
   const [sports, setSports] = useState<Sport[]>(INITIAL_SPORTS);
   const [teams, setTeams] = useState<Team[]>(INITIAL_TEAMS);
   const [competitions, setCompetitions] = useState<Competition[]>(INITIAL_COMPETITIONS);
-  const [events, setEvents] = useState<SportEvent[]>(INITIAL_EVENTS);
+  const [events, setEvents] = useState<SportEvent[]>(() => {
+    try {
+      localStorage.removeItem('kheladekh_google_sports_cache_v2');
+      const cached = localStorage.getItem(SYNC_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as SportEvent[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((e) => !isLegacyFakeEventId(e.id));
+        }
+      }
+    } catch {}
+    return INITIAL_EVENTS;
+  });
   const [news, setNews] = useState<NewsArticle[]>(INITIAL_NEWS);
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
   const [settings, setSettings] = useState<SiteSettings>(INITIAL_SETTINGS);
@@ -90,21 +154,117 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [lastAutoSyncTime, setLastAutoSyncTime] = useState<string | null>(null);
   const [nextSyncSeconds, setNextSyncSeconds] = useState<number>(AUTO_SYNC_INTERVAL_SEC);
+  const [vpnMode, setVpnMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('kheladekh_vpn_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [vpnRegion, setVpnRegion] = useState<VpnRegion>(() => {
+    try {
+      const saved = localStorage.getItem('kheladekh_vpn_region') as VpnRegion | null;
+      return saved && ['auto', 'sg', 'uk', 'eu', 'us'].includes(saved) ? saved : 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
 
-  // Automated Sports Feed Sync from server (Google Search grounded) - 5 minute cycle
+  // Sync VPN preference when authenticated user profile loads from Firestore
+  useEffect(() => {
+    if (profile) {
+      if (typeof profile.vpnMode === 'boolean') {
+        setVpnMode(profile.vpnMode);
+        try {
+          localStorage.setItem('kheladekh_vpn_mode', String(profile.vpnMode));
+        } catch {}
+      }
+      if (profile.vpnRegion && ['auto', 'sg', 'uk', 'eu', 'us'].includes(profile.vpnRegion)) {
+        setVpnRegion(profile.vpnRegion);
+        try {
+          localStorage.setItem('kheladekh_vpn_region', profile.vpnRegion);
+        } catch {}
+      }
+    }
+  }, [profile?.uid, profile?.vpnMode, profile?.vpnRegion]);
+
+  const getStreamNetworkConfig = useCallback((
+    rawUrl: string,
+    overrideVpn?: boolean,
+    overrideRegion?: VpnRegion
+  ): StreamNetworkConfig => {
+    const activeVpn = typeof overrideVpn === 'boolean' ? overrideVpn : vpnMode;
+    const activeRegion = overrideRegion || vpnRegion;
+    const cleanUrl = (rawUrl || '').trim();
+    const isEmbedUrl =
+      cleanUrl.includes('youtube.com') ||
+      cleanUrl.includes('youtube-nocookie.com') ||
+      cleanUrl.includes('youtu.be') ||
+      cleanUrl.includes('facebook.com') ||
+      cleanUrl.includes('/embed/') ||
+      cleanUrl.includes('dailymotion.com');
+
+    const shouldRelay = Boolean(
+      activeVpn && cleanUrl && !isEmbedUrl && !cleanUrl.startsWith('/api/vpn-relay')
+    );
+
+    const resolvedUrl = shouldRelay
+      ? `/api/vpn-relay?region=${encodeURIComponent(activeRegion)}&url=${encodeURIComponent(cleanUrl)}`
+      : cleanUrl;
+
+    const headers: Record<string, string> = {
+      'X-KhelaDekH-VPN-Mode': activeVpn ? 'enabled' : 'standard',
+      'X-KhelaDekH-VPN-Region': activeRegion,
+    };
+
+    return {
+      resolvedUrl,
+      isRelayed: shouldRelay || cleanUrl.startsWith('/api/vpn-relay'),
+      headers,
+      hlsConfig: {
+        enableWorker: true,
+        lowLatencyMode: !activeVpn,
+        backBufferLength: activeVpn ? 90 : 60,
+        manifestLoadingTimeOut: activeVpn ? 20000 : 12000,
+        manifestLoadingMaxRetry: activeVpn ? 4 : 2,
+        fragLoadingTimeOut: activeVpn ? 25000 : 15000,
+        fragLoadingMaxRetry: activeVpn ? 6 : 3,
+        xhrSetup: (xhr: XMLHttpRequest, requestUrl: string) => {
+          if (requestUrl.includes('/api/vpn-relay')) {
+            xhr.setRequestHeader('X-KhelaDekH-VPN-Mode', activeVpn ? 'enabled' : 'auto');
+            xhr.setRequestHeader('X-KhelaDekH-VPN-Region', activeRegion);
+          }
+        },
+      },
+    };
+  }, [vpnMode, vpnRegion]);
+
+  const canWriteAdminCollections =
+    user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  // Automated Real-Time Sports Feed Sync (updates UI immediately for all users!)
   const syncLiveSportsFromGoogle = async (silent = true) => {
     try {
       setAutoSyncing(true);
       setNextSyncSeconds(AUTO_SYNC_INTERVAL_SEC);
-      const res = await fetch('/api/sports/auto-feed');
+      const res = await fetch(`/api/sports/auto-feed${silent ? '' : '?force=true'}`, {
+        headers: {
+          'X-KhelaDekH-VPN-Mode': vpnMode ? 'enabled' : 'standard',
+          'X-KhelaDekH-VPN-Region': vpnRegion,
+        },
+      });
       if (!res.ok) throw new Error('Auto feed request failed');
       const json = await res.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
         setLastAutoSyncTime(new Date().toLocaleTimeString());
 
-        // Process incoming items
-        for (const item of json.data) {
-          const sportKey = item.sportId || 'football';
+        const syncedTeams: Team[] = [];
+        const syncedComps: Competition[] = [];
+        const syncedEvents: SportEvent[] = [];
+
+        for (let idx = 0; idx < json.data.length; idx++) {
+          const item = json.data[idx];
+          const sportKey = (item.sportId || 'football').toLowerCase();
           const defaultThumb =
             sportKey === 'cricket'
               ? CRICKET_IMAGE
@@ -115,30 +275,49 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               : TENNIS_IMAGE;
 
           const teamIds: string[] = [];
-          if (item.teamA?.name) {
-            const tAId = item.teamA.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const resolvedCaps = resolveMatchCaptains({
+            title: item.title,
+            sportId: sportKey,
+            teamAName: item.teamA?.name,
+            teamBName: item.teamB?.name,
+            teamACaptain: item.teamA?.captain,
+            teamBCaptain: item.teamB?.captain,
+          });
+
+          if (resolvedCaps.teamAName) {
+            const tAId = resolvedCaps.teamAName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
             teamIds.push(tAId);
             const teamAObj: Team = {
               id: tAId,
-              name: item.teamA.name,
-              shortName: item.teamA.shortName || item.teamA.name.slice(0, 3).toUpperCase(),
+              name: resolvedCaps.teamAName,
+              shortName: item.teamA?.shortName || resolvedCaps.teamAName.slice(0, 3).toUpperCase(),
               sportId: sportKey,
-              country: item.teamA.country || 'International',
+              country: item.teamA?.country || 'International',
+              captain: resolvedCaps.teamACaptain,
+              captainPhotoUrl: resolvedCaps.teamACaptainPhoto,
             };
-            await setDoc(doc(db, 'teams', tAId), teamAObj, { merge: true }).catch(() => {});
+            syncedTeams.push(teamAObj);
+            if (canWriteAdminCollections && tAId) {
+              setDoc(doc(db, 'teams', tAId), teamAObj, { merge: true }).catch(() => {});
+            }
           }
 
-          if (item.teamB?.name) {
-            const tBId = item.teamB.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          if (resolvedCaps.teamBName) {
+            const tBId = resolvedCaps.teamBName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
             teamIds.push(tBId);
             const teamBObj: Team = {
               id: tBId,
-              name: item.teamB.name,
-              shortName: item.teamB.shortName || item.teamB.name.slice(0, 3).toUpperCase(),
+              name: resolvedCaps.teamBName,
+              shortName: item.teamB?.shortName || resolvedCaps.teamBName.slice(0, 3).toUpperCase(),
               sportId: sportKey,
-              country: item.teamB.country || 'International',
+              country: item.teamB?.country || 'International',
+              captain: resolvedCaps.teamBCaptain,
+              captainPhotoUrl: resolvedCaps.teamBCaptainPhoto,
             };
-            await setDoc(doc(db, 'teams', tBId), teamBObj, { merge: true }).catch(() => {});
+            syncedTeams.push(teamBObj);
+            if (canWriteAdminCollections && tBId) {
+              setDoc(doc(db, 'teams', tBId), teamBObj, { merge: true }).catch(() => {});
+            }
           }
 
           const compId = (item.competition || 'International')
@@ -150,9 +329,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sportId: sportKey,
             country: 'International',
           };
-          await setDoc(doc(db, 'competitions', compId), compObj, { merge: true }).catch(() => {});
+          syncedComps.push(compObj);
+          if (canWriteAdminCollections && compId) {
+            setDoc(doc(db, 'competitions', compId), compObj, { merge: true }).catch(() => {});
+          }
 
           const evId = item.id || `${item.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-')}_auto`;
+          const safeStreamUrl =
+            item.authorizedViewingUrl && !isCartoonStream(item.authorizedViewingUrl)
+              ? item.authorizedViewingUrl
+              : sportKey === 'cricket'
+              ? VERIFIED_SPORTS_STREAMS.GTV_LIVE
+              : sportKey === 'football'
+              ? VERIFIED_SPORTS_STREAMS.FIFA_PLUS
+              : VERIFIED_SPORTS_STREAMS.ACC_SPORTS;
+
           const evObj: SportEvent = {
             id: evId,
             title: item.title,
@@ -160,20 +351,83 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sportId: sportKey,
             competitionId: compId,
             teamIds,
-            description: item.description || 'Live match automatically updated from Google Sports feed.',
+            teamAName: resolvedCaps.teamAName,
+            teamBName: resolvedCaps.teamBName,
+            teamACaptain: resolvedCaps.teamACaptain,
+            teamBCaptain: resolvedCaps.teamBCaptain,
+            teamACaptainPhoto: resolvedCaps.teamACaptainPhoto,
+            teamBCaptainPhoto: resolvedCaps.teamBCaptainPhoto,
+            venue: item.venue || 'International Stadium',
+            description: item.description || 'Real-time live match synced on KhelaDekH.',
             eventDate: item.eventDate || new Date().toISOString().split('T')[0],
             eventTime: item.eventTime || 'Live',
             timezone: item.timezone || 'UTC',
-            status: (item.status === 'FINISHED' || item.status === 'UPCOMING' || item.status === 'LIVE') ? item.status : 'LIVE',
+            status:
+              item.status === 'FINISHED' || item.status === 'UPCOMING' || item.status === 'LIVE'
+                ? item.status
+                : 'LIVE',
             published: true,
             featured: item.status === 'LIVE',
-            authorizedViewingUrl: item.authorizedViewingUrl || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+            authorizedViewingUrl: safeStreamUrl,
             thumbnailUrl: defaultThumb,
-            scoreSummary: item.scoreSummary || (item.status === 'LIVE' ? 'In Progress' : item.status === 'FINISHED' ? 'FT: Concluded' : ''),
+            scoreSummary:
+              item.scoreSummary ||
+              (item.status === 'LIVE'
+                ? 'Live In Progress'
+                : item.status === 'FINISHED'
+                ? 'FT: Concluded'
+                : 'Upcoming'),
             updatedAt: new Date().toISOString(),
           };
 
-          await setDoc(doc(db, 'events', evId), evObj, { merge: true }).catch(() => {});
+          syncedEvents.push(evObj);
+          if (canWriteAdminCollections && evId) {
+            setDoc(doc(db, 'events', evId), evObj, { merge: true }).catch(() => {});
+          }
+        }
+
+        if (syncedTeams.length > 0) {
+          setTeams((prev) => {
+            const map = new Map<string, Team>();
+            prev.forEach((t) => map.set(t.id, t));
+            syncedTeams.forEach((t) => map.set(t.id, t));
+            return Array.from(map.values());
+          });
+        }
+
+        if (syncedComps.length > 0) {
+          setCompetitions((prev) => {
+            const map = new Map<string, Competition>();
+            prev.forEach((c) => map.set(c.id, c));
+            syncedComps.forEach((c) => map.set(c.id, c));
+            return Array.from(map.values());
+          });
+        }
+
+        if (syncedEvents.length > 0) {
+          setEvents((prev) => {
+            const map = new Map<string, SportEvent>();
+            // Preserve only custom manual admin-created events (never legacy fake fixtures)
+            prev.forEach((ev) => {
+              if (
+                !isLegacyFakeEventId(ev.id) &&
+                !ev.id.startsWith('bbc-') &&
+                !ev.id.startsWith('cb-') &&
+                !ev.id.startsWith('espn-')
+              ) {
+                map.set(ev.id, ev);
+              }
+            });
+            syncedEvents.forEach((ev) => map.set(ev.id, ev));
+            const merged = Array.from(map.values()).sort((a, b) => {
+              const rank = { LIVE: 0, UPCOMING: 1, FINISHED: 2 };
+              return (rank[a.status] ?? 2) - (rank[b.status] ?? 2);
+            });
+            try {
+              localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       }
     } catch (err) {
@@ -183,7 +437,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Real-time 1-second countdown ticker for exactly 5-minute (300s) auto-sync
+  // Real-time 1-second countdown ticker for continuous 1-minute auto-sync
   useEffect(() => {
     const timer = setInterval(() => {
       setNextSyncSeconds((prev) => {
@@ -198,22 +452,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-transition past events to FINISHED if their date is before today
+  // Clean up any stale legacy mock events from Firestore when admin is signed in
   useEffect(() => {
+    if (!canWriteAdminCollections) return;
     const todayStr = new Date().toISOString().split('T')[0];
     events.forEach((ev) => {
-      if (ev.status === 'LIVE' && ev.eventDate && ev.eventDate < todayStr) {
+      if (isLegacyFakeEventId(ev.id)) {
+        deleteDoc(doc(db, 'events', ev.id)).catch(() => {});
+      } else if (ev.status === 'LIVE' && ev.eventDate && ev.eventDate < todayStr) {
         const updated: SportEvent = {
           ...ev,
           status: 'FINISHED',
           featured: false,
-          scoreSummary: ev.scoreSummary?.startsWith('FT') ? ev.scoreSummary : `FT: ${ev.scoreSummary || 'Ended'}`,
+          scoreSummary: ev.scoreSummary?.startsWith('FT')
+            ? ev.scoreSummary
+            : `FT: ${ev.scoreSummary || 'Ended'}`,
           updatedAt: new Date().toISOString(),
         };
         setDoc(doc(db, 'events', ev.id), updated, { merge: true }).catch(() => {});
       }
     });
-  }, [events.length]);
+  }, [events.length, canWriteAdminCollections]);
 
   useEffect(() => {
     let mounted = true;
@@ -221,7 +480,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (mounted) setIsFirestoreConnected(connected);
     });
 
-    // Run initial auto-sync once connected
+    // Run initial real-time sports sync immediately
     syncLiveSportsFromGoogle(true);
 
     const unsubSports = onSnapshot(
@@ -232,14 +491,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setLoading(false);
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'sports')
+      (err) => {
+        setLoading(false);
+        handleFirestoreError(err, OperationType.LIST, 'sports');
+      }
     );
 
     const unsubTeams = onSnapshot(
       collection(db, 'teams'),
       (snap) => {
         if (!snap.empty) {
-          setTeams(snap.docs.map((d) => d.data() as Team));
+          const fsTeams = snap.docs.map((d) => d.data() as Team);
+          setTeams((prev) => {
+            const map = new Map<string, Team>();
+            prev.forEach((t) => map.set(t.id, t));
+            fsTeams.forEach((t) => map.set(t.id, t));
+            return Array.from(map.values());
+          });
         }
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'teams')
@@ -249,7 +517,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       collection(db, 'competitions'),
       (snap) => {
         if (!snap.empty) {
-          setCompetitions(snap.docs.map((d) => d.data() as Competition));
+          const fsComps = snap.docs.map((d) => d.data() as Competition);
+          setCompetitions((prev) => {
+            const map = new Map<string, Competition>();
+            prev.forEach((c) => map.set(c.id, c));
+            fsComps.forEach((c) => map.set(c.id, c));
+            return Array.from(map.values());
+          });
         }
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'competitions')
@@ -259,7 +533,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       collection(db, 'events'),
       (snap) => {
         if (!snap.empty) {
-          setEvents(snap.docs.map((d) => d.data() as SportEvent));
+          const todayStr = new Date().toISOString().split('T')[0];
+          const fsEvents = snap.docs
+            .map((d) => d.data() as SportEvent)
+            .filter((ev) => !isLegacyFakeEventId(ev.id) && (!ev.eventDate || ev.eventDate >= todayStr))
+            .map((ev) => {
+              const caps = resolveMatchCaptains(ev);
+              return {
+                ...ev,
+                ...caps,
+                authorizedViewingUrl: isCartoonStream(ev.authorizedViewingUrl)
+                  ? VERIFIED_SPORTS_STREAMS.GTV_LIVE
+                  : ev.authorizedViewingUrl,
+              };
+            });
+
+          if (fsEvents.length > 0) {
+            setEvents((prev) => {
+              const map = new Map<string, SportEvent>();
+              // Keep live API-synced events authoritative over older Firestore snapshots
+              fsEvents.forEach((ev) => map.set(ev.id, ev));
+              prev.forEach((ev) => {
+                if (
+                  ev.id.startsWith('bbc-') ||
+                  ev.id.startsWith('cb-') ||
+                  ev.id.startsWith('espn-')
+                ) {
+                  map.set(ev.id, ev);
+                }
+              });
+              return Array.from(map.values()).sort((a, b) => {
+                const rank = { LIVE: 0, UPCOMING: 1, FINISHED: 2 };
+                return (rank[a.status] ?? 2) - (rank[b.status] ?? 2);
+              });
+            });
+          }
         }
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'events')
@@ -387,6 +695,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
     }
   };
+
+  const updateVpnSettings = useCallback(async (enabled: boolean, region?: VpnRegion) => {
+    const nextRegion = region || vpnRegion;
+    setVpnMode(enabled);
+    if (region) setVpnRegion(nextRegion);
+
+    try {
+      localStorage.setItem('kheladekh_vpn_mode', String(enabled));
+      localStorage.setItem('kheladekh_vpn_region', nextRegion);
+    } catch {}
+
+    if (user && !user.uid.startsWith('usr_') && !user.uid.startsWith('admin_owner_')) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          vpnMode: enabled,
+          vpnRegion: nextRegion,
+        });
+        await refreshProfile();
+      } catch (err) {
+        console.warn('Firestore VPN preference sync note:', err);
+      }
+    }
+  }, [vpnRegion, user, refreshProfile]);
 
   const submitContactMessage = async (
     msg: Omit<ContactMessage, 'id' | 'status' | 'createdAt'>
@@ -567,6 +898,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastAutoSyncTime,
         nextSyncSeconds,
         autoSyncIntervalSeconds: AUTO_SYNC_INTERVAL_SEC,
+        vpnMode,
+        vpnRegion,
+        updateVpnSettings,
+        getStreamNetworkConfig,
         syncLiveSportsFromGoogle,
         toggleFavoriteSport,
         toggleFavoriteTeam,

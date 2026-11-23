@@ -12,6 +12,7 @@ import { useViewerPresence, useMatchViewers } from '../services/presenceService'
 import { StadiumSoundboard } from '../components/StadiumSoundboard';
 import { MomentumRadar } from '../components/MomentumRadar';
 import { StreamServer } from '../types';
+import { resolveMatchCaptains } from '../data/captainsData';
 
 export const EventDetailsPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -20,7 +21,7 @@ export const EventDetailsPage: React.FC = () => {
   const initialResolution = searchParams.get('res') || undefined;
   const [activeInteractiveTab, setActiveInteractiveTab] = useState<'chat' | 'stats' | 'poll'>('chat');
 
-  const { events, sports, competitions, teams, toggleSavedEvent, settings } = useData();
+  const { events, sports, competitions, teams, toggleSavedEvent, settings, vpnMode, vpnRegion } = useData();
   const { user, profile } = useAuth();
 
   const event = events.find((e) => e.slug === slug || e.id === slug);
@@ -33,22 +34,40 @@ export const EventDetailsPage: React.FC = () => {
   const [isSearchingStreams, setIsSearchingStreams] = useState(false);
   const [autoSearchStatus, setAutoSearchStatus] = useState<string | null>(null);
 
-  // Trigger live stream auto-discovery whenever match is loaded
+  // Trigger live stream auto-discovery whenever match is loaded or VPN mode changes
   const discoverLiveStreams = (forceRefresh = false) => {
     if (!event) return;
     setIsSearchingStreams(true);
-    setAutoSearchStatus('লাইভ স্ট্রিম স্বয়ংক্রিয়ভাবে অনুসন্ধান ও ৫টি সার্ভার তৈরি হচ্ছে...');
+    setAutoSearchStatus(
+      vpnMode
+        ? `VPN Relay (${vpnRegion.toUpperCase()}) দিয়ে লাইভ স্ট্রিম সার্ভার প্রস্তুত হচ্ছে...`
+        : 'লাইভ স্ট্রিম স্বয়ংক্রিয়ভাবে অনুসন্ধান ও ৫টি সার্ভার তৈরি হচ্ছে...'
+    );
 
     fetch('/api/discover-stream-servers', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matchTitle: event.title, sportId: event.sportId }),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-KhelaDekH-VPN-Mode': vpnMode ? 'enabled' : 'standard',
+        'X-KhelaDekH-VPN-Region': vpnRegion,
+      },
+      body: JSON.stringify({
+        matchTitle: event.title,
+        sportId: event.sportId,
+        vpnMode,
+        vpnRegion,
+        forceRefresh,
+      }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.servers && data.servers.length > 0) {
           setAutoServers(data.servers);
-          setAutoSearchStatus(`⚡ লাইভ স্ট্রিম স্বয়ংক্রিয়ভাবে সংযোগ সম্পন্ন (${data.servers.length}টি সার্ভার প্রস্তুত)`);
+          setAutoSearchStatus(
+            data.vpnConfigured
+              ? `🛡️ VPN (${String(data.vpnRegion || vpnRegion).toUpperCase()}) লাইভ স্ট্রিম সংযোগ সম্পন্ন (${data.servers.length}টি সার্ভার)`
+              : `⚡ লাইভ স্ট্রিম স্বয়ংক্রিয়ভাবে সংযোগ সম্পন্ন (${data.servers.length}টি সার্ভার প্রস্তুত)`
+          );
           setTimeout(() => setAutoSearchStatus(null), 5000);
         } else {
           setAutoSearchStatus('ডিফল্ট হাই-স্পিড সার্ভার সক্রিয় রয়েছে');
@@ -64,15 +83,16 @@ export const EventDetailsPage: React.FC = () => {
 
   useEffect(() => {
     if (!event) return;
+    setAutoServers(event.streamServers && event.streamServers.length > 0 ? event.streamServers : null);
     const hasExistingLiveFeed =
       event.streamServers &&
       event.streamServers.length > 0 &&
       !event.authorizedViewingUrl?.includes('test-streams.mux.dev');
 
-    if (!hasExistingLiveFeed) {
+    if (!hasExistingLiveFeed || vpnMode) {
       discoverLiveStreams(false);
     }
-  }, [event?.id, event?.title]);
+  }, [event?.id, event?.title, vpnMode, vpnRegion]);
 
   useViewerPresence({
     page: event ? `/events/${event.slug || event.id}` : window.location.pathname,
@@ -101,6 +121,7 @@ export const EventDetailsPage: React.FC = () => {
   const sport = sports.find((s) => s.id === event.sportId);
   const competition = competitions.find((c) => c.id === event.competitionId);
   const eventTeams = teams.filter((t) => event.teamIds.includes(t.id));
+  const captains = resolveMatchCaptains(event);
   const isSaved = profile?.savedEvents.includes(event.id) || false;
   const relatedEvents = events
     .filter((e) => e.published && e.id !== event.id && e.sportId === event.sportId)
@@ -175,7 +196,36 @@ export const EventDetailsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Official Viewing Player with 5 Multi-bitrate Servers */}
+      {/* Live Match Scorecard & Stream Transparency Strip */}
+      <div className="p-4 rounded-2xl bg-[#101722] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                event.status === 'LIVE'
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                  : event.status === 'UPCOMING'
+                  ? 'bg-[#00B7FF]/15 text-[#00B7FF] border border-[#00B7FF]/30'
+                  : 'bg-white/10 text-[#A5B1C2]'
+              }`}
+            >
+              {event.status}
+            </span>
+            <h2 className="text-sm sm:text-base font-bold text-white">{event.title}</h2>
+          </div>
+          <p className="text-xs font-mono text-[#16D98A]">
+            {event.scoreSummary || 'Live Score Synced'}
+          </p>
+        </div>
+        <Link
+          to="/tv"
+          className="px-3.5 py-2 rounded-xl bg-[#151E2B] hover:bg-white/10 border border-white/10 text-xs font-semibold text-white shrink-0 inline-flex items-center gap-1.5 transition-colors self-start sm:self-auto"
+        >
+          <span>GTV / T Sports লাইভ টিভি</span>
+        </Link>
+      </div>
+
+      {/* Official Viewing Player with 5 Multi-bitrate Sports Servers */}
       <VideoPlayer
         src={autoServers?.[0]?.url || event.authorizedViewingUrl}
         servers={autoServers || event.streamServers}
@@ -184,6 +234,67 @@ export const EventDetailsPage: React.FC = () => {
         autoFullscreen={autoFullscreen}
         initialResolution={initialResolution}
       />
+
+      {/* Team Captains Matchup Card */}
+      <div className="bg-gradient-to-r from-[#101722] via-[#151E2B] to-[#101722] rounded-2xl border border-white/10 p-4 sm:p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-xs font-bold text-[#00B7FF] uppercase tracking-wider font-mono">
+            দলের অধিনায়ক মুখোমুখি (Team Captains)
+          </span>
+          {event.venue && (
+            <span className="text-xs text-[#A5B1C2] truncate max-w-[220px] sm:max-w-md">
+              {event.venue}
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-4">
+          <div className="flex items-center gap-3.5 bg-[#0D131F] p-3 rounded-2xl border border-white/10">
+            <img
+              src={captains.teamACaptainPhoto}
+              alt={captains.teamACaptain}
+              referrerPolicy="no-referrer"
+              className="w-16 h-16 rounded-2xl object-cover object-top border-2 border-[#00B7FF]/50 shrink-0 shadow-md"
+            />
+            <div className="min-w-0">
+              <p className="text-[10px] font-mono font-bold text-[#00B7FF] uppercase">
+                অধিনায়ক · {captains.teamAName}
+              </p>
+              <p className="text-sm sm:text-base font-extrabold text-white truncate mt-0.5">
+                {captains.teamACaptain}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center py-1">
+            <span className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-[#00B7FF]/15 border border-[#00B7FF]/40 text-[#00B7FF] font-mono font-black text-sm">
+              VS
+            </span>
+            {event.scoreSummary && (
+              <p className="text-xs font-mono font-bold text-[#16D98A] mt-2">
+                {event.scoreSummary}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between sm:justify-end gap-3.5 bg-[#0D131F] p-3 rounded-2xl border border-white/10">
+            <div className="min-w-0 sm:text-right">
+              <p className="text-[10px] font-mono font-bold text-[#16D98A] uppercase">
+                অধিনায়ক · {captains.teamBName}
+              </p>
+              <p className="text-sm sm:text-base font-extrabold text-white truncate mt-0.5">
+                {captains.teamBCaptain}
+              </p>
+            </div>
+            <img
+              src={captains.teamBCaptainPhoto}
+              alt={captains.teamBCaptain}
+              referrerPolicy="no-referrer"
+              className="w-16 h-16 rounded-2xl object-cover object-top border-2 border-[#16D98A]/50 shrink-0 shadow-md"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* 🌟 Exclusive Live Stadium Soundboard Toolbar under Player */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-2xl bg-[#101722] border border-white/10 shadow-lg">

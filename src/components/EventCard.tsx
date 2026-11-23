@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Trophy, Maximize, Sliders, Play, Radio, CheckCircle2, Clock } from 'lucide-react';
 import { SportEvent } from '../types';
 import { useData } from '../context/DataContext';
+import { resolveMatchCaptains } from '../data/captainsData';
 
 interface EventCardProps {
   event: SportEvent;
@@ -16,6 +17,39 @@ const RESOLUTION_OPTIONS = [
   { id: 'auto', label: 'Auto Adaptive', badge: 'Auto' },
 ];
 
+const CaptainAvatar: React.FC<{ src: string; name: string; teamName: string }> = ({
+  src,
+  name,
+  teamName,
+}) => {
+  const [err, setErr] = useState(false);
+  const initials = name
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#00B7FF]/40 bg-[#0E1522] shrink-0 shadow-md">
+      {!err && src ? (
+        <img
+          src={src}
+          alt={`${name} (${teamName} Captain)`}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setErr(true)}
+          className="w-full h-full object-cover object-top"
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-[#00B7FF]">
+          {initials}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const EventCard: React.FC<EventCardProps> = ({ event }) => {
   const navigate = useNavigate();
   const { sports, competitions } = useData();
@@ -25,6 +59,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
 
   const sport = sports.find((s) => s.id === event.sportId);
   const competition = competitions.find((c) => c.id === event.competitionId);
+  const captains = resolveMatchCaptains(event);
 
   const isFinished = event.status === 'FINISHED';
   const isLive = event.status === 'LIVE';
@@ -53,7 +88,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
   return (
     <div
       onClick={handleCardClick}
-      className={`group relative block rounded-2xl overflow-hidden border transition-all cursor-pointer shadow-lg ${
+      className={`group relative block rounded-2xl overflow-hidden border transition-all duration-300 hover:-translate-y-0.5 cursor-pointer shadow-lg ${
         isFinished
           ? 'bg-[#111723] border-white/10 hover:border-white/25 hover:bg-[#141b29]'
           : isLive
@@ -83,43 +118,41 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-[#151E2B] via-transparent to-black/30" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#151E2B] via-[#151E2B]/35 to-black/30" />
 
-        {/* Live Badge Top-Left */}
+        {/* Status Indicator Top-Left */}
         <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
           {isLive ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600/90 backdrop-blur-md border border-red-400/40 text-white text-[10px] font-mono font-black tracking-wider shadow-lg shadow-red-600/30">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/90 backdrop-blur-md text-white text-[10px] font-mono font-black tracking-wider shadow-lg shadow-red-600/30">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-              সরাসরি লাইভ (LIVE)
+              LIVE
             </span>
           ) : isFinished ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/90 backdrop-blur-md border border-white/20 text-zinc-300 text-[10px] font-mono font-bold tracking-wider shadow-md">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/90 backdrop-blur-md text-zinc-200 text-[10px] font-mono font-bold tracking-wider">
               <CheckCircle2 className="w-3.5 h-3.5 text-[#16D98A]" />
-              ম্যাচ সমাপ্ত (FINISHED / END)
+              FINISHED
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-md border border-white/10 text-white/90 text-[10px] font-mono font-semibold">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-md text-white/90 text-[10px] font-mono font-semibold">
               <Clock className="w-3 h-3 text-[#00B7FF]" />
-              আসন্ন (UPCOMING)
+              UPCOMING
             </span>
           )}
         </div>
 
-        {/* PROMINENT DUAL OPTIONS: Resolution & Full Screen (On hover / On mobile) */}
+        {/* Interactive Resolution & Full Screen Actions */}
         <div className="absolute bottom-3 inset-x-3 z-20 flex items-center justify-between gap-2">
-          {/* OPTION 1: Resolution Picker */}
           <div className="relative">
             <button
               type="button"
               onClick={handleResolutionClick}
-              title="ভিডিও রেজোলিউশন পরিবর্তন করুন (Change Resolution)"
+              title="ভিডিও রেজোলিউশন পরিবর্তন করুন"
               className="px-2.5 py-1.5 rounded-xl bg-black/80 hover:bg-black/95 backdrop-blur-md border border-white/20 hover:border-[#00B7FF] text-white text-[11px] font-semibold flex items-center gap-1.5 transition-all shadow-md active:scale-95"
             >
               <Sliders className="w-3.5 h-3.5 text-[#00B7FF]" />
               <span>{selectedRes.toUpperCase()}</span>
             </button>
 
-            {/* Resolution Menu Popover */}
             {showResMenu && (
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -161,35 +194,34 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
             )}
           </div>
 
-          {/* OPTION 2: Full Screen Quick Play Button */}
           <button
             type="button"
             onClick={handleFullscreenClick}
-            title="ফুল স্ক্রিনে সরাসরি চালু করুন (Play Full Screen)"
+            title="ফুল স্ক্রিনে দেখুন"
             className="px-3 py-1.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md shadow-[#00B7FF]/25 active:scale-95"
           >
             <Maximize className="w-3.5 h-3.5" />
-            <span>ফুল স্ক্রিন (Full Screen)</span>
+            <span>ফুল স্ক্রিন</span>
           </button>
         </div>
       </div>
 
       {/* Card Body */}
-      <div className="p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2 text-xs text-[#A5B1C2] mb-2">
-          <div className="flex items-center gap-2 truncate">
-            <span className="text-white font-medium">{sport?.name || event.sportId}</span>
+      <div className="p-4 sm:p-5 space-y-3">
+        <div className="flex items-center justify-between gap-2 text-xs text-[#A5B1C2]">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="text-white font-semibold">{sport?.name || event.sportId}</span>
             <span aria-hidden="true">·</span>
             <span className="truncate">{competition?.name || event.competitionId}</span>
           </div>
           {event.scoreSummary && (
             <span
-              className={`font-mono text-xs font-bold shrink-0 px-2 py-0.5 rounded-lg ${
+              className={`font-mono text-[11px] font-bold shrink-0 ${
                 isFinished
-                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                  ? 'text-amber-300'
                   : isLive
-                  ? 'bg-[#16D98A]/20 text-[#16D98A] border border-[#16D98A]/30'
-                  : 'bg-white/10 text-white/90'
+                  ? 'text-[#16D98A]'
+                  : 'text-[#A5B1C2]'
               }`}
             >
               {event.scoreSummary}
@@ -201,19 +233,50 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
           {event.title}
         </h3>
 
-        <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-[#A5B1C2] font-mono tabular-nums">
+        {/* Team Captains Faceoff Row */}
+        <div className="flex items-center justify-between gap-2 pt-2.5 pb-1 border-t border-white/5">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <CaptainAvatar
+              src={captains.teamACaptainPhoto}
+              name={captains.teamACaptain}
+              teamName={captains.teamAName}
+            />
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-white truncate">{captains.teamACaptain}</p>
+              <p className="text-[10px] text-[#A5B1C2] truncate">অধিনায়ক · {captains.teamAName}</p>
+            </div>
+          </div>
+
+          <span className="text-[10px] font-mono font-black text-[#00B7FF] px-1.5 shrink-0">
+            VS
+          </span>
+
+          <div className="flex items-center justify-end gap-2 min-w-0 flex-1 text-right">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-white truncate">{captains.teamBCaptain}</p>
+              <p className="text-[10px] text-[#A5B1C2] truncate">অধিনায়ক · {captains.teamBName}</p>
+            </div>
+            <CaptainAvatar
+              src={captains.teamBCaptainPhoto}
+              name={captains.teamBCaptain}
+              teamName={captains.teamBName}
+            />
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs text-[#A5B1C2] font-mono tabular-nums">
           <span>
             {event.eventDate} · {event.eventTime}
           </span>
           {isFinished ? (
             <span className="inline-flex items-center gap-1.5 text-zinc-300 group-hover:text-white font-semibold text-xs transition-colors">
               <CheckCircle2 className="w-3.5 h-3.5 text-[#16D98A]" />
-              ফলাফল ও হাইলাইটস
+              ফলাফল দেখুন
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-[#00B7FF] font-semibold text-xs group-hover:translate-x-0.5 transition-transform">
               <Play className="w-3 h-3 fill-current" />
-              সরাসরি দেখুন (Watch Live)
+              সরাসরি দেখুন
             </span>
           )}
         </div>

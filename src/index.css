@@ -11,6 +11,7 @@
     background-color: #080B12;
     color: #FFFFFF;
     font-family: var(--font-sans);
+    scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -24,4 +25,42 @@
 
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 183, 255, 0.35);
+  border-radius: 9999px;
+}
+
+@keyframes fadeInSmooth {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInSmooth 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }

@@ -25,8 +25,8 @@ export const HomePage: React.FC = () => {
   const publishedNews = news.filter((n) => n.status === 'PUBLISHED').slice(0, 3);
 
   return (
-    <div className="space-y-10 sm:space-y-12">
-      {/* 5-Minute Auto-Sync Real-Time Notification Bar */}
+    <div className="space-y-10 sm:space-y-12 animate-fade-in">
+      {/* 3-Minute Google Sports Auto-Sync Bar */}
       <AutoSyncBar />
 
       {/* Live Match Ticker Tape */}

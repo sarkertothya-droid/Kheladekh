@@ -16,24 +16,24 @@ export const Footer: React.FC = () => {
               className="w-6 h-6 rounded-md object-cover"
             />
             <span>
-              Khela<span className="text-[#00B7FF]">Dek</span>
+              Khela<span className="text-[#00B7FF]">DekH</span>
             </span>
           </Link>
           <p className="text-xs text-[#A5B1C2] mt-1">
-            অফিশিয়াল KhelaDek অ্যাপ পোর্টাল — সব লাইভ ফুটবল, ক্রিকেট ও ১০০০+ টিভি চ্যানেল দেখতে APK ডাউনলোড করুন।
+            {settings.tagline || 'সরাসরি বিশ্ব ক্রীড়া সম্প্রচার, লাইভ স্কোর, অধিনায়ক ম্যাচআপ ও ৫০০+ লাইভ টিভি চ্যানেল।'}
           </p>
-          <div className="mt-3">
-            <a
-              href="/api/download-apk"
-              download="KhelaDek-v2.4.0.apk"
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-bold hover:bg-[#00B7FF] hover:text-[#080B12] transition-all"
-            >
-              <span>Download KhelaDek APK (v2.4.0 • ৭.৩ MB)</span>
-            </a>
-          </div>
+          <p className="text-[11px] text-[#64748B] mt-2">
+            {settings.footerText || '© 2026 KhelaDekH Broadcast Network.'}
+          </p>
         </div>
 
         <nav className="flex flex-wrap items-center gap-6 text-xs font-medium text-[#A5B1C2]">
+          <Link to="/live" className="hover:text-white transition-colors">
+            Live Sports
+          </Link>
+          <Link to="/tv" className="hover:text-white transition-colors">
+            Live TV
+          </Link>
           <Link to="/about" className="hover:text-white transition-colors">
             About
           </Link>

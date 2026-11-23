@@ -157,7 +157,7 @@ export const AdminPage: React.FC = () => {
   const [adDesc, setAdDesc] = useState(settings.preRollAd?.description ?? 'এইচডি লাইভ ক্রিকেট, ফুটবল ম্যাচ ও মেগা স্পোর্টস ওয়েলকাম বোনাস! এখনই ভিজিট করে আপনার বিশেষ অফারটি লুফে নিন।');
   const [adTargetUrl, setAdTargetUrl] = useState(settings.preRollAd?.targetUrl ?? 'https://uplcm.com/4/12214527');
   const [adCtaText, setAdCtaText] = useState(settings.preRollAd?.ctaText ?? 'অফারটি দেখুন (Claim Offer)');
-  const [adImageUrl, setAdImageUrl] = useState(settings.preRollAd?.imageUrl ?? 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80');
+  const [adImageUrl, setAdImageUrl] = useState(settings.preRollAd?.imageUrl ?? '/src/assets/images/hero_stadium_night_1793946251936.jpg');
   const [testAdModalOpen, setTestAdModalOpen] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState(getRemainingCooldownMinutes(12));
 
@@ -2337,7 +2337,7 @@ export const AdminPage: React.FC = () => {
                     type="url"
                     value={adImageUrl}
                     onChange={(e) => setAdImageUrl(e.target.value)}
-                    placeholder="https://images.unsplash.com/..."
+                    placeholder="/src/assets/images/hero_stadium_night_1793946251936.jpg"
                     className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
                   />
                 </div>
