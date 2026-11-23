@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { Readable } from 'stream';
 import path from 'path';
 import dotenv from 'dotenv';
 
@@ -103,6 +104,7 @@ const VERIFIED_SPORTS_HLS = [
   'https://imn-live.esite-lab.com/hls/iraqia-sports-1.m3u8', // Al Iraqia Sport
   'https://webstream.multistream.it/memfs/e2cb3629-c1a2-495b-b43a-9eb386f04ed8.m3u8', // ACI Sport TV
   'https://live77cdn2.antenaplay.ro/live2_sport07/live2_sport07_3500k.m3u8', // AntenaPlay Events Sports
+  'https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_plus/live.livx/playlist.m3u8', // 5Plus Live Sports
 ];
 
 const CACHE_TTL_MS = 60 * 1000; // 1-minute live sync cycle
@@ -110,7 +112,7 @@ let cachedLiveFeed: any[] = [];
 let lastFetchTime = 0;
 let lastFeedSource = 'initializing';
 
-const NO_CORS_HLS_HOSTS = ['amagi.tv', 'wurl.com', 'antenaplay.ro', 'multistream.it'];
+const NO_CORS_HLS_HOSTS = ['amagi.tv', 'wurl.com', 'antenaplay.ro', 'multistream.it', 'ncare.live'];
 function requiresCorsRelay(streamUrl: string): boolean {
   const lower = (streamUrl || '').toLowerCase();
   return NO_CORS_HLS_HOSTS.some((host) => lower.includes(host));
@@ -566,24 +568,32 @@ app.get('/api/vpn-relay', async (req, res) => {
 
   const regionCfg = VPN_REGIONS[regionKey];
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), 24000);
+  const isNimbleHost =
+    parsedTarget.hostname.includes('ncare.live') || parsedTarget.hostname.includes('jagobd');
 
   try {
+    const upstreamHeaders: Record<string, string> = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+      Accept: '*/*',
+      'Accept-Language': regionCfg.lang,
+    };
+
+    if (!isNimbleHost) {
+      upstreamHeaders['X-Forwarded-For'] = regionCfg.forwardedIp;
+      upstreamHeaders['Referer'] = `${parsedTarget.origin}/`;
+      upstreamHeaders['Origin'] = parsedTarget.origin;
+    }
+
     const upstream = await fetch(parsedTarget.href, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        Accept: '*/*',
-        'Accept-Language': regionCfg.lang,
-        'X-Forwarded-For': regionCfg.forwardedIp,
-        Referer: `${parsedTarget.origin}/`,
-        Origin: parsedTarget.origin,
-      },
+      headers: upstreamHeaders,
     });
 
     if (!upstream.ok) {
+      clearTimeout(timeout);
       return res.status(upstream.status).send(`Upstream stream returned ${upstream.status}`);
     }
 
@@ -595,6 +605,7 @@ app.get('/api/vpn-relay', async (req, res) => {
 
     if (isPlaylist) {
       const playlistText = await upstream.text();
+      clearTimeout(timeout);
       const baseUrl = new URL(finalUrl);
       const wrapUrl = (u: string) => {
         try {
@@ -611,7 +622,6 @@ app.get('/api/vpn-relay', async (req, res) => {
           const trimmed = line.trim();
           if (!trimmed) return line;
           if (trimmed.startsWith('#')) {
-            // Rewrite URI="..." inside #EXT-X-KEY, #EXT-X-MEDIA, #EXT-X-MAP
             return line.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${wrapUrl(uri)}"`);
           }
           return wrapUrl(trimmed);
@@ -625,20 +635,39 @@ app.get('/api/vpn-relay', async (req, res) => {
       return res.status(200).send(rewritten);
     }
 
-    // Binary video segment (.ts, .m4s, .aac, .mp4, encryption key)
-    const buffer = Buffer.from(await upstream.arrayBuffer());
+    // Stream binary video segment immediately without buffering whole chunks in RAM
     res.setHeader('Content-Type', contentType || 'video/mp2t');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 'public, max-age=15');
     res.setHeader('X-KhelaDekH-VPN-Node', regionCfg.label);
+
+    if (upstream.body) {
+      const nodeStream = Readable.fromWeb(upstream.body as any);
+      nodeStream.on('error', () => {
+        clearTimeout(timeout);
+        if (!res.headersSent) res.status(502).end();
+        else res.end();
+      });
+      nodeStream.on('end', () => clearTimeout(timeout));
+      res.on('close', () => {
+        clearTimeout(timeout);
+        controller.abort();
+      });
+      return nodeStream.pipe(res);
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    clearTimeout(timeout);
     return res.status(200).send(buffer);
   } catch (err: any) {
-    return res.status(502).json({
-      success: false,
-      error: `VPN Relay connection failed: ${err.message || 'Timeout'}`,
-    });
-  } finally {
     clearTimeout(timeout);
+    if (!res.headersSent) {
+      return res.status(502).json({
+        success: false,
+        error: `VPN Relay connection failed: ${err.message || 'Timeout'}`,
+      });
+    }
+    res.end();
   }
 });
 

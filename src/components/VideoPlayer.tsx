@@ -346,7 +346,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               networkRetryCount += 1;
-              if (!vpnActive) {
+              if (!vpnActive && !networkConfig.isRelayed) {
                 hls.destroy();
                 setVpnActive(true);
                 showToast('জিও-ব্লক/নেটওয়ার্ক বাধা শনাক্ত: সার্ভার VPN টানেলে অটো-কানেক্ট হচ্ছে...');
@@ -373,7 +373,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               break;
             default: {
               hls.destroy();
-              if (!vpnActive) {
+              if (!vpnActive && !networkConfig.isRelayed) {
                 setVpnActive(true);
                 showToast('VPN সার্ভার রুট চালু করা হচ্ছে...');
                 return;
@@ -427,7 +427,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [playbackStreamUrl, isHls, isDirectVideo, networkConfig]);
 
-  // Automatic stall/still-poster watchdog: if direct HLS video has not started moving within 7s or freezes >8s, switch to backup live server
+  // Automatic stall/still-poster watchdog: if direct HLS video has not started moving with decoded frames within 6s or freezes >6s, switch to backup live server
   useEffect(() => {
     if (!isDirectVideo || hasPlaybackError) return;
     let lastTime = -1;
@@ -437,7 +437,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const video = videoRef.current;
       if (!video) return;
 
-      if (video.currentTime > 0 && video.currentTime !== lastTime) {
+      if (
+        video.readyState >= 2 &&
+        video.videoWidth > 0 &&
+        video.currentTime > 0 &&
+        video.currentTime !== lastTime
+      ) {
         lastTime = video.currentTime;
         stagnantChecks = 0;
         if (!isPlaying) setIsPlaying(true);
@@ -446,9 +451,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
 
       stagnantChecks += 1;
-      if (stagnantChecks >= 4) {
+      if (stagnantChecks >= 3) {
         stagnantChecks = 0;
-        if (!vpnActive) {
+        if (!vpnActive && !networkConfig.isRelayed) {
           setVpnActive(true);
           showToast('লাইভ স্ট্রিম চালু রাখতে অটো VPN রিলে কানেক্ট হচ্ছে...');
           return;
@@ -464,7 +469,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 2000);
 
     return () => clearInterval(watchdog);
-  }, [isDirectVideo, hasPlaybackError, vpnActive, activeServers, selectedServerId, isPlaying, isLoading, showToast]);
+  }, [isDirectVideo, hasPlaybackError, vpnActive, networkConfig.isRelayed, activeServers, selectedServerId, isPlaying, isLoading, showToast]);
 
   // Auto-fullscreen trigger if requested
   useEffect(() => {

@@ -17,6 +17,8 @@ export const VERIFIED_SPORTS_STREAMS = {
   GTV_LIVE:
     'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8',
   ACC_SPORTS: 'https://raycom-accdn-firetv.amagi.tv/playlist.m3u8',
+  FIVE_PLUS:
+    'https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_plus/live.livx/playlist.m3u8',
   FIFA_PLUS:
     'https://a62dad94.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWV1X0ZJRkFQbHVzRW5nbGlzaF9ITFM/playlist.m3u8',
   RED_BULL_TV: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',

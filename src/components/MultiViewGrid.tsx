@@ -77,12 +77,13 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
 
     setHasError(false);
 
-    // If source url is empty or bad, pick verified HLS fallback based on index
+    // If source url is empty or fails, pick verified adaptive HLS fallback based on index
     const fallbacks = [
-      VERIFIED_SPORTS_STREAMS.GTV_LIVE,
+      VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
+      VERIFIED_SPORTS_STREAMS.FIVE_PLUS,
       VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
-      VERIFIED_SPORTS_STREAMS.ACI_SPORT_TV,
-      VERIFIED_SPORTS_STREAMS.ANTENA_SPORT,
+      VERIFIED_SPORTS_STREAMS.FIFA_PLUS,
+      VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT,
     ];
     const url = slot.streamUrl && slot.streamUrl.trim().length > 5
       ? slot.streamUrl.trim()
@@ -99,6 +100,29 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
 
     const netCfg = getStreamNetworkConfig(url);
     const resolvedUrl = netCfg.resolvedUrl || url;
+    let fallbackIndex = index % fallbacks.length;
+
+    const loadFallbackHls = () => {
+      const fbUrl = fallbacks[fallbackIndex % fallbacks.length];
+      fallbackIndex += 1;
+      const fbCfg = getStreamNetworkConfig(fbUrl);
+      if (Hls.isSupported()) {
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        }
+        const fbHls = new Hls(fbCfg.hlsConfig);
+        hlsRef.current = fbHls;
+        fbHls.loadSource(fbCfg.resolvedUrl);
+        fbHls.attachMedia(video);
+        fbHls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {});
+        });
+      } else {
+        video.src = fbCfg.resolvedUrl;
+        video.play().catch(() => {});
+      }
+    };
 
     if (Hls.isSupported() && (url.includes('.m3u8') || !url.includes('.mp4'))) {
       const hls = new Hls(netCfg.hlsConfig);
@@ -111,21 +135,23 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
         video.play().catch(() => {});
       });
 
+      let netRetries = 0;
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
+              netRetries += 1;
+              if (netRetries <= 1) {
+                hls.startLoad();
+              } else {
+                loadFallbackHls();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError();
               break;
             default: {
-              hls.destroy();
-              // Try fallback verified stream using active VPN network config
-              const fbCfg = getStreamNetworkConfig(fallbacks[index % fallbacks.length]);
-              video.src = fbCfg.resolvedUrl;
-              video.play().catch(() => {});
+              loadFallbackHls();
               break;
             }
           }

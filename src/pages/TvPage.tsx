@@ -26,7 +26,8 @@ import {
   Hash,
   Activity,
   Server,
-  ShieldCheck
+  ShieldCheck,
+  Loader2
 } from 'lucide-react';
 import rawChannelsData from '../data/tvChannels.json';
 import { LiveTvChannel, VpnRegion } from '../types';
@@ -163,11 +164,12 @@ export const TvPage: React.FC = () => {
     return [...list].sort((a, b) => (a.channelNumber || 0) - (b.channelNumber || 0));
   }, [selectedCategory, searchQuery, favorites]);
 
-  // Verified sports-only fallback streams if a channel broadcast has no custom backup
+  // Verified adaptive sports-only fallback streams (never duplicates GTV_LIVE so failover always tries fresh working CDNs)
   const VERIFIED_FALLBACK_STREAMS = useMemo(() => [
-    VERIFIED_SPORTS_STREAMS.GTV_LIVE,
+    VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
+    VERIFIED_SPORTS_STREAMS.FIVE_PLUS,
     VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
-    VERIFIED_SPORTS_STREAMS.ANTENA_SPORT,
+    VERIFIED_SPORTS_STREAMS.FIFA_PLUS,
     VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT,
   ], []);
 
@@ -338,7 +340,7 @@ export const TvPage: React.FC = () => {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               setHeartbeatStatus('warning');
-              if (!vpnActive) {
+              if (!vpnActive && !networkConfig.isRelayed) {
                 hls.destroy();
                 setVpnActive(true);
                 setFailoverNotice('জিও-ব্লক/নেটওয়ার্ক বাধা শনাক্ত: সার্ভার VPN টানেলে অটো-কানেক্ট হয়েছে!');
@@ -385,7 +387,7 @@ export const TvPage: React.FC = () => {
         })
         .catch(() => {
           setIsLoading(false);
-          if (!vpnActive) {
+          if (!vpnActive && !networkConfig.isRelayed) {
             setVpnActive(true);
           } else if (availableStreams.length > 1) {
             switchToBackupStream('Native Playback Error');
@@ -395,8 +397,8 @@ export const TvPage: React.FC = () => {
   }, [selectedChannel, playbackStreamUrl, isEmbed, availableStreams.length, switchToBackupStream, vpnActive, networkConfig]);
 
   // STREAM HEARTBEAT MONITOR:
-  // Every 4 seconds, verify that the active broadcast is actually progressing.
-  // If video is stalled/frozen for > 6 seconds or stuck in error state, automatically switch to backup stream.
+  // Every 2 seconds, verify that the active broadcast is actually progressing (frames decoded & advancing).
+  // Catches BOTH startup hangs (readyState < 2 / videoWidth === 0 / currentTime === 0) AND mid-stream freezes.
   useEffect(() => {
     if (isEmbed) return;
 
@@ -414,28 +416,42 @@ export const TvPage: React.FC = () => {
         return;
       }
 
-      // If video is meant to play but currentTime has ceased advancing
-      if (!video.paused && !video.ended && video.readyState >= 2) {
-        if (video.currentTime === lastProgressTime) {
-          stallCount += 1;
-          if (stallCount >= 2) {
-            setHeartbeatStatus('warning');
-          }
-          if (stallCount >= 3) {
-            // Frozen for 6+ seconds without progress -> Auto-failover to backup link
-            switchToBackupStream('Stream Buffer Frozen');
-            stallCount = 0;
-          }
-        } else {
-          lastProgressTime = video.currentTime;
+      const isProgressing =
+        video.readyState >= 2 &&
+        video.videoWidth > 0 &&
+        video.currentTime > 0 &&
+        video.currentTime !== lastProgressTime;
+
+      if (isProgressing) {
+        lastProgressTime = video.currentTime;
+        stallCount = 0;
+        setHeartbeatStatus('healthy');
+        setIsLoading(false);
+        setHasPlaybackError(false);
+        return;
+      }
+
+      if (!video.paused && !video.ended) {
+        stallCount += 1;
+        if (stallCount >= 2) {
+          setHeartbeatStatus('warning');
+        }
+        if (stallCount >= 3) {
           stallCount = 0;
-          setHeartbeatStatus('healthy');
+          if (!vpnActive && !networkConfig.isRelayed) {
+            setVpnActive(true);
+            setFailoverNotice('স্ট্রিম সংযোগ সচল করতে অটো VPN রিলে চালু হয়েছে...');
+            setTimeout(() => setFailoverNotice(null), 5000);
+          } else {
+            // Startup hung or frozen for 6+ seconds -> Auto-failover to next live backup server
+            switchToBackupStream('স্ট্রিম সিগন্যাল রেসপন্স বিলম্ব');
+          }
         }
       }
     }, 2000);
 
     return () => clearInterval(heartbeatInterval);
-  }, [isEmbed, switchToBackupStream]);
+  }, [isEmbed, vpnActive, networkConfig.isRelayed, switchToBackupStream]);
 
   const toggleFullscreen = () => {
     if (!playerContainerRef.current) return;
@@ -528,6 +544,25 @@ export const TvPage: React.FC = () => {
                 playsInline
                 autoPlay
                 muted={isMuted}
+                onWaiting={() => setIsLoading(true)}
+                onCanPlay={() => {
+                  setIsLoading(false);
+                  setHasPlaybackError(false);
+                }}
+                onPlaying={() => {
+                  setIsLoading(false);
+                  setIsPlaying(true);
+                  setHasPlaybackError(false);
+                  setHeartbeatStatus('healthy');
+                }}
+                onError={() => {
+                  setIsLoading(false);
+                  if (availableStreams.length > 1) {
+                    switchToBackupStream('Video Element Error');
+                  } else {
+                    setHasPlaybackError(true);
+                  }
+                }}
                 className="w-full h-full object-contain cursor-pointer"
                 onClick={() => {
                   if (videoRef.current) {
@@ -540,6 +575,21 @@ export const TvPage: React.FC = () => {
                   }
                 }}
               />
+            )}
+
+            {/* Loading Spinner Overlay while connecting or buffering */}
+            {isLoading && !isPlaying && !hasPlaybackError && !isEmbed && (
+              <div className="absolute inset-0 bg-black/65 backdrop-blur-xs flex items-center justify-center pointer-events-none z-10">
+                <div className="flex flex-col items-center gap-2.5 p-4 rounded-2xl bg-black/75 border border-white/10 shadow-xl">
+                  <Loader2 className="w-9 h-9 text-[#00B7FF] animate-spin" />
+                  <span className="text-xs font-bold text-white">
+                    #{selectedChannel?.channelNumber} {selectedChannel?.name} লাইভ লোড হচ্ছে...
+                  </span>
+                  <span className="text-[10px] text-[#A5B1C2] font-mono">
+                    সার্ভার {activeStreamIndex + 1}/{availableStreams.length} · VPN Relay সক্রিয়
+                  </span>
+                </div>
+              </div>
             )}
 
             {/* Top Overlay: Channel Serial Number, Logo, Name & Live Status */}

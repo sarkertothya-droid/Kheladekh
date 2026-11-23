@@ -43,6 +43,8 @@ export interface StreamNetworkConfig {
   hlsConfig: {
     enableWorker: boolean;
     lowLatencyMode: boolean;
+    liveSyncDurationCount: number;
+    liveMaxLatencyDurationCount: number;
     backBufferLength: number;
     manifestLoadingTimeOut: number;
     manifestLoadingMaxRetry: number;
@@ -209,7 +211,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lowerUrl.includes('amagi.tv') ||
       lowerUrl.includes('wurl.com') ||
       lowerUrl.includes('antenaplay.ro') ||
-      lowerUrl.includes('multistream.it');
+      lowerUrl.includes('multistream.it') ||
+      lowerUrl.includes('ncare.live');
 
     const shouldRelay = Boolean(
       (activeVpn || requiresCorsRelay) &&
@@ -233,12 +236,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       headers,
       hlsConfig: {
         enableWorker: true,
-        lowLatencyMode: !shouldRelay,
+        lowLatencyMode: false,
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 6,
         backBufferLength: shouldRelay ? 90 : 60,
-        manifestLoadingTimeOut: shouldRelay ? 20000 : 12000,
-        manifestLoadingMaxRetry: shouldRelay ? 4 : 2,
-        fragLoadingTimeOut: shouldRelay ? 25000 : 15000,
-        fragLoadingMaxRetry: shouldRelay ? 6 : 3,
+        manifestLoadingTimeOut: shouldRelay ? 20000 : 15000,
+        manifestLoadingMaxRetry: shouldRelay ? 4 : 3,
+        fragLoadingTimeOut: 25000,
+        fragLoadingMaxRetry: shouldRelay ? 5 : 3,
         xhrSetup: (xhr: XMLHttpRequest, requestUrl: string) => {
           if (requestUrl.includes('/api/vpn-relay')) {
             xhr.setRequestHeader('X-KhelaDekH-VPN-Mode', activeVpn ? 'enabled' : 'auto');
