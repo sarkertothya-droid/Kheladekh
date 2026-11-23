@@ -110,10 +110,16 @@ let cachedLiveFeed: any[] = [];
 let lastFetchTime = 0;
 let lastFeedSource = 'initializing';
 
+const NO_CORS_HLS_HOSTS = ['amagi.tv', 'wurl.com', 'antenaplay.ro', 'multistream.it'];
+function requiresCorsRelay(streamUrl: string): boolean {
+  const lower = (streamUrl || '').toLowerCase();
+  return NO_CORS_HLS_HOSTS.some((host) => lower.includes(host));
+}
+
 function pickSportBroadcastUrl(sportId: string, idx: number): string {
-  if (sportId === 'cricket') return idx % 2 === 0 ? VERIFIED_SPORTS_HLS[0] : VERIFIED_SPORTS_HLS[1];
-  if (sportId === 'football') return idx % 2 === 0 ? VERIFIED_SPORTS_HLS[2] : VERIFIED_SPORTS_HLS[4];
-  if (sportId === 'basketball') return VERIFIED_SPORTS_HLS[1];
+  if (sportId === 'cricket') return idx % 2 === 0 ? VERIFIED_SPORTS_HLS[0] : VERIFIED_SPORTS_HLS[3];
+  if (sportId === 'football') return idx % 2 === 0 ? VERIFIED_SPORTS_HLS[5] : VERIFIED_SPORTS_HLS[2];
+  if (sportId === 'basketball') return VERIFIED_SPORTS_HLS[3];
   if (sportId === 'tennis') return VERIFIED_SPORTS_HLS[3];
   return VERIFIED_SPORTS_HLS[idx % VERIFIED_SPORTS_HLS.length];
 }
@@ -636,14 +642,146 @@ app.get('/api/vpn-relay', async (req, res) => {
   }
 });
 
-// Automated Real Match Live Stream Extraction (Match-Specific YT Live + Official Sports Channels + VPN Relay)
+// Official T Sports Live Resolver (@TSportsbd UC2t9imwIR7xlDfma3CmRKJQ & @TSportsLiveBangladesh UC48Zc5trlPUvDIbCAaMdLiQ)
+const TSPORTS_PRIMARY_CHANNEL_ID = 'UC2t9imwIR7xlDfma3CmRKJQ';
+const TSPORTS_ALT_CHANNEL_ID = 'UC48Zc5trlPUvDIbCAaMdLiQ';
+let cachedTSportsState: {
+  updatedAt: number;
+  primaryVideoId: string | null;
+  primaryTitle: string;
+  primaryEmbedUrl: string;
+  primaryWatchUrl: string;
+  secondaryEmbedUrl: string;
+  isLiveNow: boolean;
+} | null = null;
+
+async function verifyYouTubeWatchLive(videoId: string): Promise<{
+  ok: boolean;
+  isLiveNow: boolean;
+  isUpcoming: boolean;
+  playableInEmbed: boolean;
+  status: string;
+  title: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(
+      `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+      3800,
+      { 'Accept-Language': 'en-US,en;q=0.9' }
+    );
+    if (!res.ok) {
+      return { ok: false, isLiveNow: false, isUpcoming: false, playableInEmbed: false, status: 'HTTP_ERROR', title: '' };
+    }
+    const html = await res.text();
+    const status = html.match(/"playabilityStatus":\{"status":"([^"]+)"/)?.[1] || '';
+    const isUpcoming = /"isUpcoming":true/.test(html);
+    const hasLiveNow = /"isLiveNow":true/.test(html);
+    const hasIsLive = /"isLive":true/.test(html);
+    const playableInEmbed = !/"playableInEmbed":false/.test(html);
+    const title =
+      html.match(/<title>([^<]+)<\/title>/)?.[1]?.replace(/\s*-\s*YouTube$/, '').trim() || '';
+
+    const blockedStatus =
+      status === 'LIVE_STREAM_OFFLINE' ||
+      status === 'UNPLAYABLE' ||
+      status === 'ERROR' ||
+      status === 'LOGIN_REQUIRED';
+
+    const ok = status === 'OK' && !blockedStatus && !isUpcoming && playableInEmbed && (hasLiveNow || hasIsLive);
+    return {
+      ok,
+      isLiveNow: ok,
+      isUpcoming,
+      playableInEmbed,
+      status,
+      title,
+    };
+  } catch {
+    return { ok: false, isLiveNow: false, isUpcoming: false, playableInEmbed: false, status: 'TIMEOUT', title: '' };
+  }
+}
+
+async function resolveTSportsOfficialLive(force = false) {
+  const now = Date.now();
+  if (!force && cachedTSportsState && now - cachedTSportsState.updatedAt < 60 * 1000) {
+    return cachedTSportsState;
+  }
+
+  let primaryVideoId: string | null = null;
+  let primaryTitle = 'T Sports Official Live (বাংলাদেশ)';
+  let isLiveNow = false;
+
+  for (const channelId of [TSPORTS_PRIMARY_CHANNEL_ID, TSPORTS_ALT_CHANNEL_ID]) {
+    try {
+      const res = await fetchWithTimeout(
+        `https://www.youtube.com/channel/${channelId}/live`,
+        4500,
+        { 'Accept-Language': 'en-US,en;q=0.9' }
+      );
+      if (res.ok) {
+        const html = await res.text();
+        const canon = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})"/)?.[1];
+        const titleMatch = html.match(/<title>([^<]+)<\/title>/)?.[1]?.replace(/\s*-\s*YouTube$/, '').trim();
+        const status = html.match(/"playabilityStatus":\{"status":"([^"]+)"/)?.[1] || '';
+        const isUpcoming = /"isUpcoming":true/.test(html);
+        const isLiveNowFlag = /"isLiveNow":true/.test(html);
+        const playableInEmbed = !/"playableInEmbed":false/.test(html);
+
+        if (canon && status === 'OK' && !isUpcoming && playableInEmbed && isLiveNowFlag) {
+          primaryVideoId = canon;
+          isLiveNow = true;
+          if (titleMatch) primaryTitle = titleMatch;
+          break;
+        }
+        // Keep detected title for UI context even when stream is currently offline/upcoming
+        if (!primaryVideoId && titleMatch && titleMatch !== 'YouTube') {
+          primaryTitle = `${titleMatch} (অপেক্ষমাণ / শিডিউল্ড)`;
+        }
+      }
+    } catch {
+      // ignore and continue
+    }
+  }
+
+  const primaryEmbedUrl = primaryVideoId
+    ? `https://www.youtube-nocookie.com/embed/${primaryVideoId}?autoplay=1&mute=1&playsinline=1&enablejsapi=1`
+    : `https://www.youtube-nocookie.com/embed/live_stream?channel=${TSPORTS_PRIMARY_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1&enablejsapi=1`;
+
+  const primaryWatchUrl = primaryVideoId
+    ? `https://www.youtube.com/watch?v=${primaryVideoId}`
+    : 'https://www.youtube.com/@TSportsbd/live';
+
+  cachedTSportsState = {
+    updatedAt: now,
+    primaryVideoId,
+    primaryTitle,
+    primaryEmbedUrl,
+    primaryWatchUrl,
+    secondaryEmbedUrl: `https://www.youtube-nocookie.com/embed/live_stream?channel=${TSPORTS_ALT_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1&enablejsapi=1`,
+    isLiveNow,
+  };
+  return cachedTSportsState;
+}
+
+app.get('/api/tsports-live', async (req, res) => {
+  const force = req.query.force === 'true';
+  const info = await resolveTSportsOfficialLive(force);
+  res.json({
+    success: true,
+    channelName: 'T Sports Official',
+    officialSiteUrl: 'https://www.tsports.com/live',
+    ...info,
+  });
+});
+
+// Automated Real Match Live Stream Extraction (Verified active streams only — never offline/upcoming slates)
 async function searchYouTubeLiveStreams(matchTitle: string): Promise<{ videoId: string; title: string; channel: string }[]> {
   try {
     const cleanQuery = matchTitle.split('—')[0].trim();
     const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
-      `${cleanQuery} live`
+      `${cleanQuery} live match`
     )}&sp=EgJAAQ%253D%253D`;
-    const res = await fetchWithTimeout(searchUrl, 6000, { 'Accept-Language': 'en-US,en;q=0.9' });
+    const res = await fetchWithTimeout(searchUrl, 5000, { 'Accept-Language': 'en-US,en;q=0.9' });
     if (!res.ok) return [];
     const html = await res.text();
     const initMatch = html.match(/var ytInitialData = (\{[\s\S]*?\});<\/script>/);
@@ -652,32 +790,100 @@ async function searchYouTubeLiveStreams(matchTitle: string): Promise<{ videoId: 
     const data = JSON.parse(initMatch[1]);
     const contents =
       data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
-    const results: { videoId: string; title: string; channel: string }[] = [];
+    const candidates: { videoId: string; title: string; channel: string; officialScore: number }[] = [];
 
     // Extract team keywords to verify stream actually relates to this match
     const vsParts = cleanQuery.split(/\s+(?:vs\.?|at)\s+/i);
     const kwA = (vsParts[0] || '').trim().toLowerCase().split(/\s+/)[0];
     const kwB = (vsParts[1] || '').trim().toLowerCase().split(/\s+/)[0];
 
+    const spamKeywords = [
+      'audio commentary',
+      'live commentary',
+      'commentary only',
+      'live score',
+      'scorecard',
+      'score update',
+      'watch along',
+      'watchalong',
+      'cricket 24',
+      'cricket 22',
+      'ea cricket',
+      'simulation',
+      'dream11',
+      'fantasy',
+      'reaction',
+      'talk show',
+    ];
+    const officialChannels = [
+      't sports',
+      'tsports',
+      'rabbithole',
+      'gtv',
+      'sony',
+      'star sports',
+      'willow',
+      'fox cricket',
+      'sky sports',
+      'ptv sports',
+      'a sports',
+      'supersport',
+      'icc',
+      'ecb',
+      'cricket australia',
+      'espn',
+      'tnt sports',
+      'dazn',
+      'bein',
+    ];
+
     for (const sec of contents) {
       for (const item of sec?.itemSectionRenderer?.contents || []) {
         const vr = item?.videoRenderer;
-        if (!vr?.videoId) continue;
+        if (!vr?.videoId || vr?.upcomingEventData) continue;
         const vTitle = vr.title?.runs?.map((r: any) => r.text).join('') || '';
         const chName = vr.ownerText?.runs?.[0]?.text || 'Live Stream';
         const lowerTitle = vTitle.toLowerCase();
+        const lowerCh = chName.toLowerCase();
+
+        // Filter out fake audio-only/scorecard spam streams
+        if (spamKeywords.some((bad) => lowerTitle.includes(bad) || lowerCh.includes(bad))) {
+          continue;
+        }
+
         // Ensure at least one team keyword matches so unrelated videos never sneak in
         const matchesFixture =
           (kwA && kwA.length >= 3 && lowerTitle.includes(kwA)) ||
           (kwB && kwB.length >= 3 && lowerTitle.includes(kwB));
         if (matchesFixture) {
-          results.push({ videoId: vr.videoId, title: vTitle, channel: chName });
+          const isOfficial = officialChannels.some((oc) => lowerCh.includes(oc) || lowerTitle.includes(oc));
+          candidates.push({
+            videoId: vr.videoId,
+            title: vTitle,
+            channel: chName,
+            officialScore: isOfficial ? 1 : 0,
+          });
         }
-        if (results.length >= 3) break;
+        if (candidates.length >= 5) break;
       }
-      if (results.length >= 3) break;
+      if (candidates.length >= 5) break;
     }
-    return results;
+
+    if (candidates.length === 0) return [];
+    candidates.sort((a, b) => b.officialScore - a.officialScore);
+
+    // Verify top candidates are genuinely playable right now (status === 'OK', not offline/upcoming)
+    const verified = await Promise.all(
+      candidates.slice(0, 4).map(async (c) => {
+        const check = await verifyYouTubeWatchLive(c.videoId);
+        return check.ok ? c : null;
+      })
+    );
+
+    return verified
+      .filter((c): c is { videoId: string; title: string; channel: string; officialScore: number } => Boolean(c))
+      .slice(0, 3)
+      .map(({ videoId, title, channel }) => ({ videoId, title, channel }));
   } catch {
     return [];
   }
@@ -700,7 +906,7 @@ app.post('/api/discover-stream-servers', async (req, res) => {
     : 'auto';
 
   const applyVpnRoute = (streamUrl: string, preferredRegion = region) => {
-    if (!useVpn || !streamUrl || streamUrl.startsWith('/api/vpn-relay')) {
+    if (!streamUrl || streamUrl.startsWith('/api/vpn-relay')) {
       return streamUrl;
     }
     const isEmbed =
@@ -709,102 +915,210 @@ app.post('/api/discover-stream-servers', async (req, res) => {
       streamUrl.includes('youtu.be') ||
       streamUrl.includes('/embed/');
     if (isEmbed) return streamUrl;
-    return `/api/vpn-relay?region=${encodeURIComponent(preferredRegion)}&url=${encodeURIComponent(
-      streamUrl
-    )}`;
+
+    // Always route via /api/vpn-relay if VPN is enabled OR if CDN lacks browser CORS headers
+    if (useVpn || requiresCorsRelay(streamUrl)) {
+      return `/api/vpn-relay?region=${encodeURIComponent(preferredRegion)}&url=${encodeURIComponent(
+        streamUrl
+      )}`;
+    }
+    return streamUrl;
   };
 
   try {
-    const ytStreams = await searchYouTubeLiveStreams(query);
+    const [ytStreams, tSportsInfo] = await Promise.all([
+      searchYouTubeLiveStreams(query),
+      resolveTSportsOfficialLive(),
+    ]);
     const detectedSource =
-      ytStreams.length > 0 ? 'match_specific_youtube_live' : 'kheladekh_verified_sports_cdn';
+      ytStreams.length > 0 || tSportsInfo.isLiveNow
+        ? 'official_tsports_and_match_live'
+        : 'verified_live_hls_broadcast';
 
     const ytEmbed = (vid: string) =>
-      `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=0&playsinline=1`;
-
-    const primarySportUrl = pickSportBroadcastUrl(sportId || 'cricket', 0);
-    const tSportsLiveEmbed =
-      'https://www.youtube-nocookie.com/embed/live_stream?channel=UCBoKYPIjkXcLhvHmHOJuPyQ';
+      `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1&playsinline=1&enablejsapi=1`;
 
     const isCricketOrBd =
-      sportId === 'cricket' || query.toLowerCase().includes('bangladesh');
+      sportId === 'cricket' ||
+      /bangladesh|tigers|south africa|cricket/i.test(query);
 
-    const server1 = ytStreams[0]
-      ? {
+    const gtvServer = {
+      id: 'server-1',
+      name: 'GTV বাংলাদেশ লাইভ (FHD ১০৮০p HLS)',
+      quality: '1080p HLS',
+      url: applyVpnRoute(VERIFIED_SPORTS_HLS[0]),
+      badge: useVpn ? `VPN (${region.toUpperCase()}) LIVE` : 'সরাসরি ভিডিও LIVE',
+      description: 'সরাসরি গাজী টিভি (GTV) বাংলাদেশ স্পোর্টস HLS ব্রডকাস্ট — তাৎক্ষণিক লাইভ ভিডিও চালু হয়।',
+    };
+
+    const redBullServer = {
+      id: 'server-1',
+      name: 'গ্লোবাল স্পোর্টস নেটওয়ার্ক (HD HLS)',
+      quality: '1080p HD',
+      url: applyVpnRoute(VERIFIED_SPORTS_HLS[3]),
+      badge: useVpn ? `VPN (${region.toUpperCase()}) LIVE` : 'সরাসরি ভিডিও LIVE',
+      description: 'যাচাইকৃত ২৪/৭ আন্তর্জাতিক লাইভ স্পোর্টস ব্রডকাস্ট (তাৎক্ষণিক প্লেব্যাক)।',
+    };
+
+    const fifaPlusServer = {
+      id: 'server-2',
+      name: 'FIFA+ / গ্লোবাল স্পোর্টস (VPN Relay)',
+      quality: '1080p Relay',
+      url: applyVpnRoute(VERIFIED_SPORTS_HLS[2]),
+      badge: 'VPN HLS LIVE',
+      description: 'আন্তর্জাতিক ফুটবল ও স্পোর্টস ফিফা+ সরাসরি লাইভ স্ট্রিম।',
+    };
+
+    const accServer = {
+      id: 'server-3',
+      name: 'ACC / স্পোর্টস নেটওয়ার্ক (VPN Relay)',
+      quality: '720p Relay',
+      url: applyVpnRoute(VERIFIED_SPORTS_HLS[1]),
+      badge: 'CORS-সেফ HD',
+      description: 'ক্লাউড VPN রিলে-সুরক্ষিত আন্তর্জাতিক স্পোর্টস চ্যানেল।',
+    };
+
+    const tSportsServerObj = {
+      id: 'server-tsports',
+      name: 'T Sports Official Live (বাংলাদেশ)',
+      quality: '1080p Official',
+      url: tSportsInfo.primaryEmbedUrl,
+      badge: tSportsInfo.isLiveNow ? 'T Sports LIVE' : 'অফিশিয়াল চ্যানেল (বিরতি/শিডিউল্ড)',
+      description: tSportsInfo.isLiveNow
+        ? `${tSportsInfo.primaryTitle} — টি স্পোর্টস অফিশিয়াল সরাসরি সম্প্রচার।`
+        : `${tSportsInfo.primaryTitle} — এই মুহূর্তে টি স্পোর্টস ইউটিউব লাইভ শুরু হয়নি বা বিরতিতে আছে; লাইভ দেখতে tsports.com/live অথবা সার্ভার ১ (GTV) ব্যবহার করুন।`,
+    };
+
+    // Never put an offline/upcoming YouTube stream in Server 1!
+    // Server 1 MUST always be an actively broadcasting playable live video stream.
+    let serverList: any[];
+    if (isCricketOrBd) {
+      if (tSportsInfo.isLiveNow) {
+        serverList = [
+          { ...tSportsServerObj, id: 'server-1' },
+          { ...gtvServer, id: 'server-2' },
+          ytStreams[0]
+            ? {
+                id: 'server-3',
+                name: `ম্যাচ লাইভ (${ytStreams[0].channel})`,
+                quality: '1080p Live',
+                url: ytEmbed(ytStreams[0].videoId),
+                badge: 'ম্যাচ ফিড',
+                description: ytStreams[0].title,
+              }
+            : { ...accServer, id: 'server-3' },
+          {
+            id: 'server-4',
+            name: 'AntenaSport ইউরোপ (VPN Relay)',
+            quality: '720p VPN',
+            url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
+            badge: 'VPN কানেক্টেড',
+            description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
+          },
+          {
+            id: 'server-5',
+            name: 'গ্লোবাল স্পোর্টস HD (ব্যাকআপ)',
+            quality: 'Auto HD',
+            url: applyVpnRoute(VERIFIED_SPORTS_HLS[3]),
+            badge: 'অটো ব্যাকআপ',
+            description: 'স্থিতিশীল আন্তর্জাতিক স্পোর্টস ব্যাকআপ ফিড।',
+          },
+        ];
+      } else if (ytStreams[0]) {
+        serverList = [
+          {
+            id: 'server-1',
+            name: `লাইভ ম্যাচ ফিড (${ytStreams[0].channel})`,
+            quality: '1080p Live',
+            url: ytEmbed(ytStreams[0].videoId),
+            badge: 'সরাসরি ম্যাচ LIVE',
+            description: `${ytStreams[0].title} — সরাসরি যাচাইকৃত ম্যাচ লাইভ স্ট্রিম।`,
+          },
+          { ...gtvServer, id: 'server-2' },
+          { ...accServer, id: 'server-3' },
+          {
+            id: 'server-4',
+            name: 'AntenaSport ইউরোপ (VPN Relay)',
+            quality: '720p VPN',
+            url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
+            badge: 'VPN কানেক্টেড',
+            description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
+          },
+          { ...tSportsServerObj, id: 'server-5' },
+        ];
+      } else {
+        // Active 24/7 moving GTV HLS first so user immediately sees moving live video instead of frozen YouTube upcoming photo!
+        serverList = [
+          { ...gtvServer, id: 'server-1' },
+          { ...accServer, id: 'server-2' },
+          { ...redBullServer, id: 'server-3' },
+          {
+            id: 'server-4',
+            name: 'AntenaSport ইউরোপ (VPN Relay)',
+            quality: '720p VPN',
+            url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
+            badge: 'VPN কানেক্টেড',
+            description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
+          },
+          { ...tSportsServerObj, id: 'server-5' },
+        ];
+      }
+    } else if (ytStreams[0]) {
+      serverList = [
+        {
           id: 'server-1',
           name: `লাইভ ম্যাচ ফিড (${ytStreams[0].channel})`,
           quality: '1080p Live',
           url: ytEmbed(ytStreams[0].videoId),
           badge: 'এই ম্যাচের লাইভ',
           description: `${ytStreams[0].title} — সরাসরি ম্যাচ কভারেজ ও লাইভ আপডেট।`,
-        }
-      : {
-          id: 'server-1',
-          name: isCricketOrBd ? 'GTV বাংলাদেশ (FHD ১০৮০p)' : 'FIFA+ / Global Sports (FHD)',
-          quality: '1080p HD',
-          url: applyVpnRoute(primarySportUrl),
-          badge: useVpn ? `VPN (${region.toUpperCase()})` : 'সরাসরি টিভি ফিড',
-          description: 'যাচাইকৃত আসল স্পোর্টস টিভি সম্প্রচার (VPN রিলে সাপোর্টসহ)।',
-        };
-
-    const server2 = ytStreams[1]
-      ? {
-          id: 'server-2',
-          name: `বিকল্প ম্যাচ ফিড (${ytStreams[1].channel})`,
-          quality: '720p Live',
-          url: ytEmbed(ytStreams[1].videoId),
-          badge: 'ম্যাচ ব্যাকআপ',
-          description: `${ytStreams[1].title}`,
-        }
-      : {
-          id: 'server-2',
-          name: isCricketOrBd ? 'T Sports বাংলাদেশ (Live)' : 'ACC Sports Live (৭২০p)',
+        },
+        { ...(sportId === 'football' ? fifaPlusServer : redBullServer), id: 'server-2' },
+        { ...gtvServer, id: 'server-3' },
+        {
+          id: 'server-4',
+          name: 'AntenaSport ইউরোপ (VPN Relay)',
+          quality: '720p VPN',
+          url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
+          badge: 'VPN কানেক্টেড',
+          description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
+        },
+        { ...accServer, id: 'server-5' },
+      ];
+    } else {
+      serverList = [
+        { ...(sportId === 'football' ? fifaPlusServer : redBullServer), id: 'server-1' },
+        { ...gtvServer, id: 'server-2' },
+        { ...accServer, id: 'server-3' },
+        {
+          id: 'server-4',
+          name: 'AntenaSport ইউরোপ (VPN Relay)',
+          quality: '720p VPN',
+          url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
+          badge: 'VPN কানেক্টেড',
+          description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
+        },
+        {
+          id: 'server-5',
+          name: 'Al Iraqia Sport HD (Direct)',
           quality: '720p HD',
-          url: applyVpnRoute(isCricketOrBd ? tSportsLiveEmbed : VERIFIED_SPORTS_HLS[1]),
-          badge: useVpn && !isCricketOrBd ? `VPN (${region.toUpperCase()})` : 'অফিশিয়াল চ্যানেল',
-          description: isCricketOrBd
-            ? 'টি স্পোর্টস অফিশিয়াল লাইভ স্পোর্টস সম্প্রচার।'
-            : 'আন্তর্জাতিক স্পোর্টস নেটওয়ার্ক লাইভ ফিড।',
-        };
-
-    const servers = [
-      server1,
-      server2,
-      {
-        id: 'server-3',
-        name: 'GTV বাংলাদেশ লাইভ (HLS)',
-        quality: '720p Direct',
-        url: applyVpnRoute(VERIFIED_SPORTS_HLS[0]),
-        badge: useVpn ? `VPN (${region.toUpperCase()})` : 'গাজি টিভি BD',
-        description: 'সরাসরি গাজি টিভি (GTV) বাংলাদেশ স্পোর্টস HLS ফিড।',
-      },
-      {
-        id: 'server-4',
-        name: 'AntenaSport ইউরোপ (VPN Relay)',
-        quality: '720p VPN',
-        url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
-        badge: 'VPN কানেক্টেড',
-        description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
-      },
-      {
-        id: 'server-5',
-        name: 'FIFA+ / Al Iraqia Sports (Global)',
-        quality: 'Auto HD',
-        url: applyVpnRoute(sportId === 'football' ? VERIFIED_SPORTS_HLS[2] : VERIFIED_SPORTS_HLS[5]),
-        badge: useVpn ? `VPN (${region.toUpperCase()})` : 'গ্লোবাল ব্যাকআপ',
-        description: 'আন্তর্জাতিক স্পোর্টস টিভি ব্যাকআপ সার্ভার।',
-      },
-    ];
+          url: applyVpnRoute(VERIFIED_SPORTS_HLS[5]),
+          badge: 'স্পোর্টস ব্যাকআপ',
+          description: 'সরাসরি আন্তর্জাতিক স্পোর্টস ব্যাকআপ সার্ভার।',
+        },
+      ];
+    }
 
     res.json({
       success: true,
       matchTitle: query,
       sportId: sportId || 'cricket',
       source: detectedSource,
-      totalDiscovered: ytStreams.length,
+      totalDiscovered: ytStreams.length + (tSportsInfo.isLiveNow ? 1 : 0) + 1,
+      tSportsLive: tSportsInfo,
       vpnConfigured: useVpn,
       vpnRegion: region,
-      servers,
+      servers: serverList,
     });
   } catch (error: any) {
     res.status(500).json({

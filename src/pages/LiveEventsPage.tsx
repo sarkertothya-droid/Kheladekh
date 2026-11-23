@@ -1,18 +1,54 @@
-import React, { useState } from 'react';
-import { Radio, CheckCircle2, Flame, Trophy, Play } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Radio, CheckCircle2, Flame, Trophy } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { EventCard } from '../components/EventCard';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { AutoSyncBar } from '../components/AutoSyncBar';
+import { StreamServer } from '../types';
 
 export const LiveEventsPage: React.FC = () => {
-  const { events } = useData();
+  const { events, vpnMode, vpnRegion } = useData();
   const [activeTab, setActiveTab] = useState<'live' | 'finished'>('live');
+  const [discoveredServers, setDiscoveredServers] = useState<StreamServer[] | null>(null);
 
   // Strict separation: Live matches ONLY vs Finished matches
   const liveEvents = events.filter((e) => e.published && e.status === 'LIVE');
   const finishedEvents = events.filter((e) => e.published && e.status === 'FINISHED');
   const featuredLive = liveEvents.find((e) => e.authorizedViewingUrl) || liveEvents[0];
+
+  useEffect(() => {
+    if (!featuredLive) {
+      setDiscoveredServers(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetch('/api/discover-stream-servers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-KhelaDekH-VPN-Mode': vpnMode ? 'enabled' : 'standard',
+        'X-KhelaDekH-VPN-Region': vpnRegion,
+      },
+      body: JSON.stringify({
+        matchTitle: featuredLive.title,
+        sportId: featuredLive.sportId,
+        vpnMode,
+        vpnRegion,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.success && Array.isArray(data.servers) && data.servers.length > 0) {
+          setDiscoveredServers(data.servers);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [featuredLive?.id, featuredLive?.title, vpnMode, vpnRegion]);
 
   return (
     <div className="space-y-8 animate-fade-in pb-12">
@@ -30,7 +66,7 @@ export const LiveEventsPage: React.FC = () => {
               <span>সরাসরি লাইভ স্পোর্টস সম্প্রচার</span>
             </h1>
             <p className="text-xs sm:text-sm text-[#A5B1C2]">
-              প্রতি ৫ মিনিটে অটোমেটিক সিঙ্ক হচ্ছে। সমাপ্ত ম্যাচসমূহ সরাসরি লাইভ থেকে আলাদা করে সংরক্ষিত।
+              প্রতি ১ মিনিটে অটোমেটিক লাইভ স্কোর ও T Sports অফিসিয়াল স্ট্রিম সিঙ্ক হচ্ছে।
             </p>
           </div>
         </div>
@@ -69,7 +105,8 @@ export const LiveEventsPage: React.FC = () => {
       {activeTab === 'live' && featuredLive && (
         <div className="space-y-4">
           <VideoPlayer
-            src={featuredLive.authorizedViewingUrl}
+            src={discoveredServers?.[0]?.url || featuredLive.authorizedViewingUrl}
+            servers={discoveredServers || undefined}
             poster={featuredLive.thumbnailUrl}
             title={featuredLive.title}
           />

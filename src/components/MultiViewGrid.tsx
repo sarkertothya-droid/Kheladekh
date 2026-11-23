@@ -20,9 +20,9 @@ import {
 import { useData } from '../context/DataContext';
 import rawChannelsData from '../data/tvChannels.json';
 import { LiveTvChannel, SportEvent } from '../types';
+import { VERIFIED_SPORTS_STREAMS } from '../data/captainsData';
 import {
   VERIFIED_HLS_STREAM_1,
-  VERIFIED_HLS_STREAM_2,
   VERIFIED_HLS_STREAM_3,
   VERIFIED_HLS_STREAM_4,
 } from './VideoPlayer';
@@ -77,16 +77,25 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
 
     setHasError(false);
 
-    // If source url is empty or bad, pick verified fallback based on index
+    // If source url is empty or bad, pick verified HLS fallback based on index
     const fallbacks = [
-      VERIFIED_HLS_STREAM_1,
-      VERIFIED_HLS_STREAM_2,
-      VERIFIED_HLS_STREAM_3,
-      VERIFIED_HLS_STREAM_4,
+      VERIFIED_SPORTS_STREAMS.GTV_LIVE,
+      VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
+      VERIFIED_SPORTS_STREAMS.ACI_SPORT_TV,
+      VERIFIED_SPORTS_STREAMS.ANTENA_SPORT,
     ];
     const url = slot.streamUrl && slot.streamUrl.trim().length > 5
       ? slot.streamUrl.trim()
       : fallbacks[index % fallbacks.length];
+
+    const isSlotEmbed =
+      url.includes('youtube.com/embed') ||
+      url.includes('youtube-nocookie.com/embed') ||
+      url.includes('/embed/');
+
+    if (isSlotEmbed) {
+      return;
+    }
 
     const netCfg = getStreamNetworkConfig(url);
     const resolvedUrl = netCfg.resolvedUrl || url;
@@ -155,6 +164,19 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
     }
   };
 
+  const rawSlotUrl = (slot.streamUrl || '').trim();
+  const isSlotEmbed =
+    rawSlotUrl.includes('youtube.com/embed') ||
+    rawSlotUrl.includes('youtube-nocookie.com/embed') ||
+    rawSlotUrl.includes('/embed/');
+  const slotEmbedSrc = isSlotEmbed
+    ? `${rawSlotUrl.replace('mute=0', 'mute=1')}${
+        rawSlotUrl.includes('autoplay=')
+          ? ''
+          : `${rawSlotUrl.includes('?') ? '&' : '?'}autoplay=1&mute=1&playsinline=1&enablejsapi=1`
+      }`
+    : '';
+
   return (
     <div
       onClick={onSelectAudio}
@@ -164,16 +186,26 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
           : 'border-white/10 hover:border-white/30'
       }`}
     >
-      <video
-        ref={(el) => {
-          localVideoRef.current = el;
-          videoRefCallback(el);
-        }}
-        playsInline
-        autoPlay
-        muted={!isActiveAudio}
-        className="w-full h-full object-cover bg-black"
-      />
+      {isSlotEmbed ? (
+        <iframe
+          src={slotEmbedSrc}
+          title={slot.title}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+          className="w-full h-full border-0 bg-black"
+        />
+      ) : (
+        <video
+          ref={(el) => {
+            localVideoRef.current = el;
+            videoRefCallback(el);
+          }}
+          playsInline
+          autoPlay
+          muted={!isActiveAudio}
+          className="w-full h-full object-cover bg-black"
+        />
+      )}
 
       {/* Top Header Overlay */}
       <div className="absolute top-0 inset-x-0 p-2.5 sm:p-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent flex items-center justify-between pointer-events-none">
@@ -313,7 +345,7 @@ export const MultiViewGrid: React.FC = () => {
   const [slots, setSlots] = useState<ScreenSlot[]>([
     {
       id: 'slot-1',
-      title: liveEvents[0]?.title || 'T Sports Live (HD)',
+      title: liveEvents[0]?.title || 'GTV Live (গাজী টিভি)',
       subtitle: liveEvents[0] ? 'লাইভ ম্যাচ ফিড ১' : 'খেলাধুলা চ্যানেল #১',
       streamUrl: liveEvents[0]?.authorizedViewingUrl || VERIFIED_HLS_STREAM_1,
       sourceType: liveEvents[0] ? 'match' : 'tv',
@@ -321,9 +353,9 @@ export const MultiViewGrid: React.FC = () => {
     },
     {
       id: 'slot-2',
-      title: liveEvents[1]?.title || 'GTV Live (গাজী টিভি)',
-      subtitle: liveEvents[1] ? 'লাইভ ম্যাচ ফিড ২' : 'খেলাধুলা চ্যানেল #২',
-      streamUrl: liveEvents[1]?.authorizedViewingUrl || VERIFIED_HLS_STREAM_2,
+      title: liveEvents[1]?.title || 'T Sports Official Live',
+      subtitle: liveEvents[1] ? 'লাইভ ম্যাচ ফিড ২' : 'অফিশিয়াল টি স্পোর্টস',
+      streamUrl: liveEvents[1]?.authorizedViewingUrl || VERIFIED_SPORTS_STREAMS.TSPORTS_OFFICIAL,
       sourceType: liveEvents[1] ? 'match' : 'tv',
       logo: liveEvents[1]?.thumbnailUrl,
     },

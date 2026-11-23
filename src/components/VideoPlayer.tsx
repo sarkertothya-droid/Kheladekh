@@ -42,8 +42,8 @@ export interface ResolutionOption {
 }
 
 export const VERIFIED_HLS_STREAM_1 = VERIFIED_SPORTS_STREAMS.GTV_LIVE;
-export const VERIFIED_HLS_STREAM_2 = VERIFIED_SPORTS_STREAMS.ACC_SPORTS;
-export const VERIFIED_HLS_STREAM_3 = VERIFIED_SPORTS_STREAMS.ACI_SPORT_TV;
+export const VERIFIED_HLS_STREAM_2 = VERIFIED_SPORTS_STREAMS.TSPORTS_OFFICIAL;
+export const VERIFIED_HLS_STREAM_3 = VERIFIED_SPORTS_STREAMS.ACC_SPORTS;
 export const VERIFIED_HLS_STREAM_4 = VERIFIED_SPORTS_STREAMS.ANTENA_SPORT;
 export const VERIFIED_MP4_STREAM_5 = VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT;
 
@@ -58,7 +58,8 @@ const isBlockedNonSportStream = (url?: string): boolean => {
     u.includes('bipbop') ||
     u.includes('x36xhzz') ||
     u.includes('mov_bbb') ||
-    u.includes('v_645516')
+    u.includes('v_645516') ||
+    u.includes('ucbokypijkxclhvhmhojupyq')
   );
 };
 
@@ -79,19 +80,19 @@ export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
     },
     {
       id: 'server-2',
-      name: 'KhelaDekH সার্ভার ২ (গ্লোবাল এইচডি ৭২০p)',
-      quality: '720p HD',
+      name: 'T Sports Official Live (বাংলাদেশ)',
+      quality: '1080p Official',
       url: VERIFIED_HLS_STREAM_2,
-      badge: 'স্থিতিশীল ব্যাকআপ',
-      description: 'আন্তর্জাতিক স্পোর্টস নেটওয়ার্ক থেকে সংগৃহীত দ্বিতীয় লাইভ ফিড।',
+      badge: 'টি স্পোর্টস অফিশিয়াল',
+      description: 'বাংলাদেশের প্রথম ক্রীড়া চ্যানেল টি স্পোর্টস (@TSportsbd) এর অফিশিয়াল লাইভ ফিড।',
     },
     {
       id: 'server-3',
-      name: 'KhelaDekH সার্ভার ৩ (ডাটা সেভার ৪৮০p)',
-      quality: '480p SD',
+      name: 'KhelaDekH সার্ভার ৩ (গ্লোবাল এইচডি ৭২০p)',
+      quality: '720p HD',
       url: VERIFIED_HLS_STREAM_3,
-      badge: 'কম মেগাবাইট খরচ',
-      description: 'কম ব্যান্ডউইথ খরচ করে খেলা দেখার জন্য হাই-স্পিড স্পোর্টস সার্ভার।',
+      badge: 'স্থিতিশীল ব্যাকআপ',
+      description: 'আন্তর্জাতিক স্পোর্টস নেটওয়ার্ক থেকে সংগৃহীত দ্বিতীয় লাইভ ফিড।',
     },
     {
       id: 'server-4',
@@ -147,7 +148,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, []);
 
   // Active servers configuration: sanitize non-sports URLs & ensure 5-tier sports setup
-  const baseDefaults = buildDefaultServers(src);
+  const baseDefaults = React.useMemo(() => buildDefaultServers(src), [src]);
   const activeServers: StreamServer[] = React.useMemo(() => {
     if (servers && servers.length > 0) {
       const sanitized = servers.map((srv, idx) =>
@@ -426,6 +427,45 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [playbackStreamUrl, isHls, isDirectVideo, networkConfig]);
 
+  // Automatic stall/still-poster watchdog: if direct HLS video has not started moving within 7s or freezes >8s, switch to backup live server
+  useEffect(() => {
+    if (!isDirectVideo || hasPlaybackError) return;
+    let lastTime = -1;
+    let stagnantChecks = 0;
+
+    const watchdog = setInterval(() => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (video.currentTime > 0 && video.currentTime !== lastTime) {
+        lastTime = video.currentTime;
+        stagnantChecks = 0;
+        if (!isPlaying) setIsPlaying(true);
+        if (isLoading) setIsLoading(false);
+        return;
+      }
+
+      stagnantChecks += 1;
+      if (stagnantChecks >= 4) {
+        stagnantChecks = 0;
+        if (!vpnActive) {
+          setVpnActive(true);
+          showToast('লাইভ স্ট্রিম চালু রাখতে অটো VPN রিলে কানেক্ট হচ্ছে...');
+          return;
+        }
+        const curIdx = activeServers.findIndex((s) => s.id === selectedServerId);
+        const nextIdx = (curIdx + 1) % activeServers.length;
+        if (activeServers.length > 1 && nextIdx !== curIdx) {
+          const nextServer = activeServers[nextIdx];
+          setSelectedServerId(nextServer.id);
+          showToast(`অটো-সুইচ: ${nextServer.name}`);
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(watchdog);
+  }, [isDirectVideo, hasPlaybackError, vpnActive, activeServers, selectedServerId, isPlaying, isLoading, showToast]);
+
   // Auto-fullscreen trigger if requested
   useEffect(() => {
     if (autoFullscreen && containerRef.current && !document.fullscreenElement) {
@@ -699,7 +739,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const vid = new URL(activeStream).searchParams.get('v');
         if (vid) {
           ytId = vid;
-          embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=0&rel=0&playsinline=1`;
+          embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
           isYt = true;
         }
       } catch {}
@@ -707,18 +747,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const vid = activeStream.split('youtu.be/')[1]?.split('?')[0]?.split('/')[0];
       if (vid) {
         ytId = vid;
-        embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=0&rel=0&playsinline=1`;
+        embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
         isYt = true;
       }
     } else if (activeStream.includes('youtube.com/live/')) {
       const vid = activeStream.split('/live/')[1]?.split('?')[0]?.split('/')[0];
       if (vid) {
         ytId = vid;
-        embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=0&rel=0&playsinline=1`;
+        embedUrl = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
         isYt = true;
       }
-    } else if (activeStream.includes('youtube.com/embed/')) {
+    } else if (activeStream.includes('youtube.com/embed/') || activeStream.includes('youtube-nocookie.com/embed/')) {
       isYt = true;
+      // Ensure mute=1 & autoplay=1 so browser autoplay policy never freezes the iframe on a thumbnail photo
+      if (embedUrl.includes('mute=0')) {
+        embedUrl = embedUrl.replace('mute=0', 'mute=1');
+      } else if (!embedUrl.includes('mute=')) {
+        embedUrl += embedUrl.includes('?') ? '&mute=1' : '?mute=1';
+      }
+      if (!embedUrl.includes('autoplay=')) {
+        embedUrl += '&autoplay=1&playsinline=1';
+      }
     }
 
     return (

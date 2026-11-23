@@ -211,20 +211,62 @@ export const TvPage: React.FC = () => {
     setVpnRegion(globalVpnRegion);
   }, [globalVpnRegion]);
 
-  // When selected channel changes, reset stream index to 0
+  const [tSportsResolvedUrl, setTSportsResolvedUrl] = useState<string | null>(null);
+
+  // When selected channel changes, reset stream index to 0 and resolve official T Sports Live if active
   useEffect(() => {
     setActiveStreamIndex(0);
     setFailoverNotice(null);
     setHeartbeatStatus('healthy');
+
+    if (selectedChannel?.id === 'bd_tsports_live') {
+      fetch('/api/tsports-live')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.isLiveNow && data.primaryEmbedUrl) {
+            setTSportsResolvedUrl(data.primaryEmbedUrl);
+          } else {
+            // T Sports YouTube stream is currently offline/upcoming -> auto-switch to active live BD HLS backup so moving video plays immediately
+            setTSportsResolvedUrl(null);
+            setActiveStreamIndex(2);
+            setFailoverNotice(
+              'T Sports ইউটিউব লাইভ বর্তমানে বিরতিতে/আপকামিং — সরাসরি BD স্পোর্টস (GTV HLS) চালানো হচ্ছে!'
+            );
+            setTimeout(() => setFailoverNotice(null), 6000);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setTSportsResolvedUrl(null);
+    }
   }, [selectedChannel?.id]);
 
-  const currentStreamUrl = availableStreams[activeStreamIndex] || selectedChannel?.streamUrl || '';
+  const rawSelectedUrl = availableStreams[activeStreamIndex] || selectedChannel?.streamUrl || '';
+  const currentStreamUrl =
+    selectedChannel?.id === 'bd_tsports_live' && activeStreamIndex === 0 && tSportsResolvedUrl
+      ? tSportsResolvedUrl
+      : rawSelectedUrl;
 
   // Check if current channel stream is an embed iframe (e.g. YouTube Live Embed)
   const isEmbed =
     currentStreamUrl.includes('youtube.com/embed') ||
+    currentStreamUrl.includes('youtube-nocookie.com/embed') ||
     currentStreamUrl.includes('player.') ||
     currentStreamUrl.includes('/embed/');
+
+  const embedIframeUrl = useMemo(() => {
+    if (!isEmbed || !currentStreamUrl) return currentStreamUrl;
+    let url = currentStreamUrl;
+    if (url.includes('mute=0')) {
+      url = url.replace('mute=0', 'mute=1');
+    } else if (!url.includes('mute=')) {
+      url += url.includes('?') ? '&mute=1' : '?mute=1';
+    }
+    if (!url.includes('autoplay=')) {
+      url += '&autoplay=1&playsinline=1&enablejsapi=1';
+    }
+    return url;
+  }, [currentStreamUrl, isEmbed]);
 
   const networkConfig = useMemo(
     () => getStreamNetworkConfig(currentStreamUrl, vpnActive, vpnRegion),
@@ -474,7 +516,7 @@ export const TvPage: React.FC = () => {
           >
             {isEmbed ? (
               <iframe
-                src={`${selectedChannel.streamUrl}&autoplay=1&mute=0`}
+                src={embedIframeUrl}
                 title={selectedChannel.name}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                 allowFullScreen
@@ -732,6 +774,18 @@ export const TvPage: React.FC = () => {
                     <Server className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">ব্যাকআপ সার্ভার ({activeStreamIndex + 1})</span>
                   </button>
+                )}
+                {selectedChannel?.id === 'bd_tsports_live' && (
+                  <a
+                    href="https://www.tsports.com/live"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-xs font-bold text-emerald-400 flex items-center gap-1.5 transition-colors"
+                    title="T Sports অফিসিয়াল ওয়েবসাইটে লাইভ দেখুন"
+                  >
+                    <Radio className="w-3.5 h-3.5 animate-pulse" />
+                    <span className="hidden sm:inline">tsports.com লাইভ</span>
+                  </a>
                 )}
                 <a
                   href={currentStreamUrl}

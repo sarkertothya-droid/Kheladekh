@@ -196,16 +196,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const activeVpn = typeof overrideVpn === 'boolean' ? overrideVpn : vpnMode;
     const activeRegion = overrideRegion || vpnRegion;
     const cleanUrl = (rawUrl || '').trim();
+    const lowerUrl = cleanUrl.toLowerCase();
     const isEmbedUrl =
-      cleanUrl.includes('youtube.com') ||
-      cleanUrl.includes('youtube-nocookie.com') ||
-      cleanUrl.includes('youtu.be') ||
-      cleanUrl.includes('facebook.com') ||
-      cleanUrl.includes('/embed/') ||
-      cleanUrl.includes('dailymotion.com');
+      lowerUrl.includes('youtube.com') ||
+      lowerUrl.includes('youtube-nocookie.com') ||
+      lowerUrl.includes('youtu.be') ||
+      lowerUrl.includes('facebook.com') ||
+      lowerUrl.includes('/embed/') ||
+      lowerUrl.includes('dailymotion.com');
+
+    const requiresCorsRelay =
+      lowerUrl.includes('amagi.tv') ||
+      lowerUrl.includes('wurl.com') ||
+      lowerUrl.includes('antenaplay.ro') ||
+      lowerUrl.includes('multistream.it');
 
     const shouldRelay = Boolean(
-      activeVpn && cleanUrl && !isEmbedUrl && !cleanUrl.startsWith('/api/vpn-relay')
+      (activeVpn || requiresCorsRelay) &&
+        cleanUrl &&
+        !isEmbedUrl &&
+        !cleanUrl.startsWith('/api/vpn-relay')
     );
 
     const resolvedUrl = shouldRelay
@@ -213,7 +223,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       : cleanUrl;
 
     const headers: Record<string, string> = {
-      'X-KhelaDekH-VPN-Mode': activeVpn ? 'enabled' : 'standard',
+      'X-KhelaDekH-VPN-Mode': activeVpn || requiresCorsRelay ? 'enabled' : 'standard',
       'X-KhelaDekH-VPN-Region': activeRegion,
     };
 
@@ -223,12 +233,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       headers,
       hlsConfig: {
         enableWorker: true,
-        lowLatencyMode: !activeVpn,
-        backBufferLength: activeVpn ? 90 : 60,
-        manifestLoadingTimeOut: activeVpn ? 20000 : 12000,
-        manifestLoadingMaxRetry: activeVpn ? 4 : 2,
-        fragLoadingTimeOut: activeVpn ? 25000 : 15000,
-        fragLoadingMaxRetry: activeVpn ? 6 : 3,
+        lowLatencyMode: !shouldRelay,
+        backBufferLength: shouldRelay ? 90 : 60,
+        manifestLoadingTimeOut: shouldRelay ? 20000 : 12000,
+        manifestLoadingMaxRetry: shouldRelay ? 4 : 2,
+        fragLoadingTimeOut: shouldRelay ? 25000 : 15000,
+        fragLoadingMaxRetry: shouldRelay ? 6 : 3,
         xhrSetup: (xhr: XMLHttpRequest, requestUrl: string) => {
           if (requestUrl.includes('/api/vpn-relay')) {
             xhr.setRequestHeader('X-KhelaDekH-VPN-Mode', activeVpn ? 'enabled' : 'auto');

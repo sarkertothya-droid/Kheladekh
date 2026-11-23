@@ -8,8 +8,12 @@ export const CAPTAIN_PORTRAITS = {
   courtStar: '/src/assets/images/captain_basketball_tennis_1795433591192.jpg',
 };
 
-// Verified 200 OK Live Sports-Only HLS Broadcast URLs (Zero cartoons or test clips)
+// Verified 200 OK Live Sports-Only Broadcast URLs (Zero cartoons or test clips)
 export const VERIFIED_SPORTS_STREAMS = {
+  TSPORTS_OFFICIAL:
+    'https://www.youtube-nocookie.com/embed/live_stream?channel=UC2t9imwIR7xlDfma3CmRKJQ',
+  TSPORTS_LIVE_ALT:
+    'https://www.youtube-nocookie.com/embed/live_stream?channel=UC48Zc5trlPUvDIbCAaMdLiQ',
   GTV_LIVE:
     'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8',
   ACC_SPORTS: 'https://raycom-accdn-firetv.amagi.tv/playlist.m3u8',

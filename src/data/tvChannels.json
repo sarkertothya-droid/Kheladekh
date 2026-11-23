@@ -15,11 +15,12 @@
   {
     "channelNumber": 2,
     "id": "bd_tsports_live",
-    "name": "T Sports (Live Bangladesh)",
+    "name": "T Sports Official Live (টি স্পোর্টস)",
     "category": "sports",
     "country": "BD",
-    "streamUrl": "https://www.youtube.com/embed/live_stream?channel=UCBoKYPIjkXcLhvHmHOJuPyQ",
+    "streamUrl": "https://www.youtube.com/embed/live_stream?channel=UC2t9imwIR7xlDfma3CmRKJQ",
     "backupStreamUrls": [
+      "https://www.youtube.com/embed/live_stream?channel=UC48Zc5trlPUvDIbCAaMdLiQ",
       "https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8",
       "https://raycom-accdn-firetv.amagi.tv/playlist.m3u8"
     ],
