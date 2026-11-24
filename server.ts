@@ -2,7 +2,10 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { Readable } from 'stream';
+import fs from 'fs';
 import path from 'path';
+import zlib from 'zlib';
+import net from 'net';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -512,29 +515,113 @@ const VPN_REGIONS: Record<string, { label: string; lang: string; forwardedIp: st
   us: { label: 'United States (US) VPN', lang: 'en-US,en;q=0.9', forwardedIp: '172.64.32.71' },
 };
 
+const AD_AND_TRACKER_REGEX =
+  /(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google|dai\.google\.com|imasdk\.googleapis|admob|applovin|unityads|unity3d\.com\/ads|startapp|ironsource|vungle|chartboost|mintegral|pubmatic|openx|rubiconproject|adnxs|criteo|taboola|outbrain|popads|popcash|propellerads|adsterra|hilltopads|monetag|exoclick|juicyads|trafficjunky|pagead|adsafeprotected|scorecardresearch|quantserve|ad-delivery|adserver|preroll|midroll|\/adbreak|\/ad_break|\/vast|\/vmap|\.vast\.xml)/i;
+
+function stripAdsFromM3u8Playlist(playlistText: string): { text: string; strippedCount: number } {
+  const lines = playlistText.split('\n');
+  const cleanLines: string[] = [];
+  let strippedCount = 0;
+  let insideAdCue = false;
+  let skipNextUriAfterAdMeta = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+
+    if (/^#(EXT-X-CUE-OUT|EXT-OATCLS-SCTE35|EXT-X-SCTE35)/i.test(trimmed)) {
+      insideAdCue = true;
+      strippedCount += 1;
+      continue;
+    }
+    if (/^#EXT-X-CUE-IN/i.test(trimmed)) {
+      insideAdCue = false;
+      strippedCount += 1;
+      continue;
+    }
+    if (/^#EXT-X-DATERANGE:.*(SCTE35|CLASS="com\.apple\.hls\.interstitial"|AD)/i.test(trimmed)) {
+      strippedCount += 1;
+      continue;
+    }
+
+    // Look ahead if an EXTINF or URI points to a known ad server
+    if (/^#EXTINF:/i.test(trimmed)) {
+      const nextLine = (lines[i + 1] || '').trim();
+      if (insideAdCue || (nextLine && AD_AND_TRACKER_REGEX.test(nextLine))) {
+        skipNextUriAfterAdMeta = true;
+        strippedCount += 1;
+        continue;
+      }
+    }
+
+    if (trimmed && !trimmed.startsWith('#')) {
+      if (skipNextUriAfterAdMeta || insideAdCue || AD_AND_TRACKER_REGEX.test(trimmed)) {
+        skipNextUriAfterAdMeta = false;
+        strippedCount += 1;
+        continue;
+      }
+    }
+
+    cleanLines.push(raw);
+  }
+
+  return { text: cleanLines.join('\n'), strippedCount };
+}
+
+function isPrivateIpv4(ip: string): boolean {
+  const parts = ip.split('.').map((n) => Number(n));
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    return false;
+  }
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127)
+  );
+}
+
 function isSafePublicHttpUrl(rawUrl: string): URL | null {
   try {
     const parsed = new URL(rawUrl);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    const host = parsed.hostname.toLowerCase();
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     if (
+      !host ||
       host === 'localhost' ||
-      host === '0.0.0.0' ||
-      host === '::1' ||
-      host === '[::1]' ||
       host.endsWith('.local') ||
       host.endsWith('.internal') ||
-      host.startsWith('127.') ||
-      host.startsWith('10.') ||
-      host.startsWith('192.168.') ||
-      host.startsWith('169.254.') ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
-      host.startsWith('fc') ||
-      host.startsWith('fd') ||
-      host.startsWith('fe80')
+      host.endsWith('.localhost')
     ) {
       return null;
     }
+
+    if (net.isIP(host) === 4 && isPrivateIpv4(host)) {
+      return null;
+    }
+
+    if (net.isIP(host) === 6) {
+      if (host === '::1' || host === '::' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) {
+        return null;
+      }
+      // Handle normalized IPv4-mapped IPv6 like ::ffff:7f00:1 or ::ffff:127.0.0.1
+      const v4MappedDotted = host.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+      if (v4MappedDotted && isPrivateIpv4(v4MappedDotted[1])) {
+        return null;
+      }
+      const v4MappedHex = host.match(/(?:^|:)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+      if (v4MappedHex) {
+        const hi = parseInt(v4MappedHex[1], 16);
+        const lo = parseInt(v4MappedHex[2], 16);
+        const mappedIpv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+        if (isPrivateIpv4(mappedIpv4)) return null;
+      }
+    }
+
     return parsed;
   } catch {
     return null;
@@ -604,8 +691,9 @@ app.get('/api/vpn-relay', async (req, res) => {
       finalUrl.toLowerCase().includes('.m3u8');
 
     if (isPlaylist) {
-      const playlistText = await upstream.text();
+      const rawPlaylistText = await upstream.text();
       clearTimeout(timeout);
+      const { text: playlistText, strippedCount } = stripAdsFromM3u8Playlist(rawPlaylistText);
       const baseUrl = new URL(finalUrl);
       const wrapUrl = (u: string) => {
         try {
@@ -632,6 +720,7 @@ app.get('/api/vpn-relay', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache, no-store');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('X-KhelaDekH-VPN-Node', regionCfg.label);
+      res.setHeader('X-KhelaDekH-Ads-Stripped', String(strippedCount));
       return res.status(200).send(rewritten);
     }
 
@@ -1440,6 +1529,632 @@ app.post('/api/auth/password-reset', async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// EXTERNAL APP & SOURCE BRIDGE (AD-FREE REBRANDER)
+// ==========================================
+let cachedFirebaseWebApiKey: string | null = null;
+function getFirebaseWebApiKey(): string | null {
+  if (cachedFirebaseWebApiKey) return cachedFirebaseWebApiKey;
+  if (process.env.FIREBASE_WEB_API_KEY) {
+    cachedFirebaseWebApiKey = process.env.FIREBASE_WEB_API_KEY.trim();
+    return cachedFirebaseWebApiKey;
+  }
+  try {
+    const cfgPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(cfgPath)) {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+      if (cfg?.apiKey) {
+        cachedFirebaseWebApiKey = String(cfg.apiKey);
+        return cachedFirebaseWebApiKey;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+async function verifyAdminFirebaseToken(req: express.Request): Promise<{ ok: boolean; email?: string; error?: string }> {
+  const authHeader = req.headers.authorization || '';
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!idToken) {
+    return { ok: false, error: 'অ্যাডমিন অনুমোদন (Bearer Token) প্রয়োজন।' };
+  }
+  const apiKey = getFirebaseWebApiKey();
+  if (!apiKey) {
+    return { ok: false, error: 'Firebase কনফিগারেশন পাওয়া যায়নি।' };
+  }
+  try {
+    const resp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      }
+    );
+    if (!resp.ok) {
+      return { ok: false, error: 'অবৈধ বা মেয়াদোত্তীর্ণ অ্যাডমিন টোকেন।' };
+    }
+    const data: any = await resp.json();
+    const userInfo = data?.users?.[0];
+    const email = (userInfo?.email || '').toLowerCase();
+    if (!email || email !== OWNER_MAIL.toLowerCase()) {
+      return { ok: false, error: 'শুধুমাত্র সাইট অ্যাডমিন এই ফিচার ব্যবহার করতে পারবেন।' };
+    }
+    return { ok: true, email };
+  } catch (err: any) {
+    return { ok: false, error: `টোকেন যাচাই করা যায়নি: ${err.message || 'Unknown error'}` };
+  }
+}
+
+function guessStreamCategory(name: string, group?: string): string {
+  const txt = `${name} ${group || ''}`.toLowerCase();
+  if (/sport|cricket|football|soccer|ten|star|sony|espn|tsport|gtv|bein|sky|dazn|nba|ufc|f1|golf/.test(txt)) {
+    return 'sports';
+  }
+  if (/news|somoy|jamuna|ekattor|independent|channel 24|bbc|cnn|aljazeera|dbc/.test(txt)) {
+    return 'news';
+  }
+  if (/movie|cinema|film|hbo|star gold|sony max|zee cinema/.test(txt)) {
+    return 'movies';
+  }
+  if (/music|gan|mtv|vh1/.test(txt)) {
+    return 'music';
+  }
+  if (/kid|cartoon|disney|nick|pogo/.test(txt)) {
+    return 'kids';
+  }
+  return 'entertainment';
+}
+
+function isPlayableStreamUrl(rawUrl: string): boolean {
+  const lower = rawUrl.toLowerCase();
+  if (AD_AND_TRACKER_REGEX.test(lower)) return false;
+  if (/\.(png|jpg|jpeg|gif|webp|svg|ico|css|woff2?|ttf|eot|apk|zip|pdf)(\?|$)/i.test(lower)) {
+    return false;
+  }
+  return (
+    lower.includes('.m3u8') ||
+    lower.includes('.mpd') ||
+    lower.includes('.mp4') ||
+    lower.includes('youtube.com/embed/') ||
+    lower.includes('youtube-nocookie.com/embed/') ||
+    lower.includes('youtube.com/watch?v=') ||
+    lower.includes('youtu.be/') ||
+    lower.includes('/live/') ||
+    lower.includes('playlist.m3u8') ||
+    lower.includes('chunklist')
+  );
+}
+
+function sanitizeChannelName(raw: string, fallbackIndex: number, brandName: string): string {
+  const cleaned = raw
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned || cleaned.length < 2) {
+    return `${brandName} Live Stream #${fallbackIndex}`;
+  }
+  return cleaned.slice(0, 75);
+}
+
+function extractCleanChannelsFromContent(
+  content: string,
+  options: { baseUrl?: string; brandName: string; appName: string; stripAds: boolean }
+): { channels: any[]; adsBlockedCount: number } {
+  const channels: any[] = [];
+  const seenUrls = new Set<string>();
+  let adsBlockedCount = 0;
+
+  const pushChannel = (name: string, rawUrl: string, logo?: string, group?: string, language?: string) => {
+    let resolved = (rawUrl || '').trim();
+    if (!resolved) return;
+    if (options.baseUrl && !/^https?:\/\//i.test(resolved)) {
+      try {
+        resolved = new URL(resolved, options.baseUrl).href;
+      } catch {
+        return;
+      }
+    }
+    if (!isSafePublicHttpUrl(resolved)) return;
+    if (options.stripAds && AD_AND_TRACKER_REGEX.test(resolved)) {
+      adsBlockedCount += 1;
+      return;
+    }
+    if (seenUrls.has(resolved)) return;
+    seenUrls.add(resolved);
+
+    const idx = channels.length + 1;
+    const cleanName = sanitizeChannelName(name, idx, options.brandName);
+    const category = guessStreamCategory(cleanName, group);
+    channels.push({
+      channelNumber: 900 + idx,
+      id: `brand_src_${Date.now().toString(36)}_${idx}`,
+      name: cleanName,
+      category,
+      country: /bd|bangla|gtv|tsport|somoy|jamuna|atn|ntv|btv|maasranga|boishakhi/i.test(cleanName)
+        ? 'BD'
+        : 'Global',
+      logo: logo && isSafePublicHttpUrl(logo) ? logo : null,
+      streamUrl: resolved,
+      quality: resolved.includes('.m3u8') ? 'HLS Live HD (Ad-Free)' : 'Live HD (Ad-Free)',
+      isLive: true,
+      featured: true,
+      language: language || options.appName || options.brandName,
+    });
+  };
+
+  const trimmed = content.trim();
+
+  // 1. Try JSON feed parsing
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const walk = (node: any, depth = 0) => {
+        if (!node || depth > 5 || channels.length >= 120) return;
+        if (Array.isArray(node)) {
+          node.forEach((item) => walk(item, depth + 1));
+          return;
+        }
+        if (typeof node === 'object') {
+          const candidateUrl =
+            node.streamUrl ||
+            node.stream_url ||
+            node.hls ||
+            node.hlsUrl ||
+            node.m3u8 ||
+            node.url ||
+            node.link ||
+            node.src ||
+            node.videoUrl;
+          if (typeof candidateUrl === 'string' && /^https?:\/\//i.test(candidateUrl)) {
+            if (options.stripAds && AD_AND_TRACKER_REGEX.test(candidateUrl)) {
+              adsBlockedCount += 1;
+            } else {
+              const title =
+                node.name || node.title || node.channelName || node.channel_name || node.label || '';
+              const logo = node.logo || node.tvg_logo || node.icon || node.image || node.thumbnail;
+              const cat = node.category || node.group || node.genre || '';
+              pushChannel(String(title), candidateUrl, typeof logo === 'string' ? logo : undefined, String(cat));
+            }
+          }
+          for (const k of Object.keys(node)) {
+            if (typeof node[k] === 'object') walk(node[k], depth + 1);
+          }
+        }
+      };
+      walk(parsed);
+      if (channels.length > 0) return { channels, adsBlockedCount };
+    } catch {
+      // fall through to M3U/HTML/regex scanner
+    }
+  }
+
+  // 2. Parse #EXTM3U / #EXTINF playlists
+  if (content.includes('#EXTINF')) {
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length && channels.length < 120; i++) {
+      const line = lines[i].trim();
+      if (!line.startsWith('#EXTINF')) continue;
+      const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
+      const groupMatch = line.match(/group-title="([^"]+)"/i);
+      const commaIdx = line.lastIndexOf(',');
+      const title = commaIdx !== -1 ? line.slice(commaIdx + 1).trim() : '';
+
+      // Find next non-comment URL line
+      let urlLine = '';
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const candidate = lines[j].trim();
+        if (candidate && !candidate.startsWith('#')) {
+          urlLine = candidate;
+          i = j;
+          break;
+        }
+      }
+      if (urlLine) {
+        if (options.stripAds && AD_AND_TRACKER_REGEX.test(urlLine)) {
+          adsBlockedCount += 1;
+        } else {
+          pushChannel(title, urlLine, logoMatch?.[1], groupMatch?.[1]);
+        }
+      }
+    }
+    if (channels.length > 0) return { channels, adsBlockedCount };
+  }
+
+  // 3. Strip HTML ad scripts & count ad tags if HTML page
+  let sanitizedHtml = content;
+  if (/<html|<body|<script|<iframe/i.test(content)) {
+    const adTagMatches = content.match(/<(script|iframe|ins)\b[^>]*?(doubleclick|googlesyndication|adsterra|propellerads|popads|monetag|taboola|outbrain|adservice|ads|analytics)[^>]*>/gi);
+    adsBlockedCount += adTagMatches ? adTagMatches.length : 0;
+
+    sanitizedHtml = content
+      .replace(/<script\b[^>]*?(doubleclick|googlesyndication|adsterra|propellerads|popads|monetag|taboola|outbrain|adservice|vast|vmap)[\s\S]*?<\/script>/gi, '')
+      .replace(/<iframe\b[^>]*?(doubleclick|googlesyndication|adsterra|propellerads|popads|monetag|adservice)[\s\S]*?<\/iframe>/gi, '');
+
+    // Extract title + iframe embeds that are genuine video players (YouTube/Vimeo/Stream players)
+    const iframeRegex = /<iframe[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    let ifrMatch: RegExpExecArray | null;
+    while ((ifrMatch = iframeRegex.exec(sanitizedHtml)) !== null && channels.length < 60) {
+      const src = ifrMatch[1];
+      if (AD_AND_TRACKER_REGEX.test(src)) {
+        adsBlockedCount += 1;
+        continue;
+      }
+      if (/youtube|youtu\.be|player|live|embed|twitch|dailymotion|stream/i.test(src)) {
+        pushChannel(`${options.appName || options.brandName} Player #${channels.length + 1}`, src, undefined, 'sports');
+      }
+    }
+  }
+
+  // 4. Deep URL extraction across HTML / APK DEX / XML / JSON text
+  const urlMatches = sanitizedHtml.match(/https?:\/\/[^\s"'<>\\`|\x00-\x1f]{10,400}/g) || [];
+  for (const rawMatch of urlMatches) {
+    const cleanUrl = rawMatch.replace(/[,;.)\]]+$/, '');
+    if (AD_AND_TRACKER_REGEX.test(cleanUrl)) {
+      adsBlockedCount += 1;
+      continue;
+    }
+    if (!isPlayableStreamUrl(cleanUrl)) continue;
+    // Derive readable channel name from URL path if available
+    let derivedName = '';
+    try {
+      const u = new URL(cleanUrl);
+      const parts = u.pathname.split('/').filter(Boolean);
+      const meaningful = parts.find((p) => !/^(hls|live|playlist\.m3u8|index\.m3u8|master\.m3u8|embed|watch)$/i.test(p));
+      if (meaningful) {
+        derivedName = meaningful.replace(/\.(m3u8|mp4|mpd)$/i, '').replace(/[_-]+/g, ' ');
+      }
+    } catch {}
+    pushChannel(derivedName || `${options.appName || options.brandName} Live #${channels.length + 1}`, cleanUrl);
+    if (channels.length >= 120) break;
+  }
+
+  return { channels, adsBlockedCount };
+}
+
+function extractTextFromApkZipBuffer(buf: Buffer): string {
+  // Check ZIP local file magic PK\x03\x04
+  if (buf.length < 22 || buf.readUInt32LE(0) !== 0x04034b50) {
+    return buf.toString('utf8');
+  }
+
+  // Locate End of Central Directory (0x06054b50) scanning backwards from end
+  const minOffset = Math.max(0, buf.length - 65558);
+  let eocdOffset = -1;
+  for (let pos = buf.length - 22; pos >= minOffset; pos--) {
+    if (buf.readUInt32LE(pos) === 0x06054b50) {
+      eocdOffset = pos;
+      break;
+    }
+  }
+  if (eocdOffset === -1) {
+    return buf.toString('latin1');
+  }
+
+  const cdirOffset = buf.readUInt32LE(eocdOffset + 16);
+  const cdirSize = buf.readUInt32LE(eocdOffset + 12);
+  let pos = cdirOffset;
+  const cdirEnd = Math.min(buf.length, cdirOffset + cdirSize);
+  const chunks: string[] = [];
+  let totalDecodedBytes = 0;
+
+  while (pos + 46 <= cdirEnd) {
+    if (buf.readUInt32LE(pos) !== 0x02014b50) break;
+    const method = buf.readUInt16LE(pos + 10);
+    const compressedSize = buf.readUInt32LE(pos + 20);
+    const uncompressedSize = buf.readUInt32LE(pos + 24);
+    const fnameLen = buf.readUInt16LE(pos + 28);
+    const extraLen = buf.readUInt16LE(pos + 30);
+    const commentLen = buf.readUInt16LE(pos + 32);
+    const localHeaderOffset = buf.readUInt32LE(pos + 42);
+    const fileName = buf.subarray(pos + 46, pos + 46 + fnameLen).toString('utf8');
+    pos += 46 + fnameLen + extraLen + commentLen;
+
+    // Only inspect manifests, dex, resources, configs, playlists, web assets
+    if (!/\.(dex|arsc|xml|json|m3u8?|html?|js|txt|cfg|properties)$/i.test(fileName)) {
+      continue;
+    }
+    if (uncompressedSize > 25 * 1024 * 1024 || totalDecodedBytes > 60 * 1024 * 1024) {
+      continue;
+    }
+    if (localHeaderOffset + 30 > buf.length || buf.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
+      continue;
+    }
+
+    const lfFnameLen = buf.readUInt16LE(localHeaderOffset + 26);
+    const lfExtraLen = buf.readUInt16LE(localHeaderOffset + 28);
+    const dataStart = localHeaderOffset + 30 + lfFnameLen + lfExtraLen;
+    if (dataStart + compressedSize > buf.length) continue;
+
+    try {
+      const compSlice = buf.subarray(dataStart, dataStart + compressedSize);
+      let rawEntry: Buffer;
+      if (method === 0) {
+        rawEntry = compSlice;
+      } else if (method === 8) {
+        rawEntry = zlib.inflateRawSync(compSlice);
+      } else {
+        continue;
+      }
+      totalDecodedBytes += rawEntry.length;
+      // Replace non-printable bytes with spaces so URLs embedded inside binary .dex / .arsc remain intact
+      const asciiView = rawEntry.toString('latin1').replace(/[^\x20-\x7E\r\n]/g, ' ');
+      chunks.push(asciiView);
+    } catch {
+      // skip corrupt zip entry
+    }
+  }
+
+  return chunks.join('\n');
+}
+
+async function fetchSafePublicUrlWithRedirects(
+  initialUrl: URL,
+  timeoutMs = 20000
+): Promise<{ response: Response; finalUrl: string }> {
+  let currentUrl = initialUrl;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    for (let hop = 0; hop <= 5; hop++) {
+      const res = await fetch(currentUrl.href, {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept:
+            'application/vnd.android.package-archive,application/zip,application/octet-stream,text/html,application/json,application/vnd.apple.mpegurl,*/*',
+        },
+      });
+
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        await res.body?.cancel().catch(() => {});
+        if (!location) {
+          throw new Error('অসম্পূর্ণ রিডাইরেক্ট লিংক।');
+        }
+        const resolved = new URL(location, currentUrl.href).href;
+        const safeNext = isSafePublicHttpUrl(resolved);
+        if (!safeNext) {
+          throw new Error('অবৈধ বা প্রাইভেট রিডাইরেক্ট লিংক ব্লক করা হয়েছে।');
+        }
+        currentUrl = safeNext;
+        continue;
+      }
+
+      return { response: res, finalUrl: res.url || currentUrl.href };
+    }
+    throw new Error('অতিরিক্ত রিডাইরেক্ট হওয়ায় লিংকটি খোলা যায়নি।');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readBoundedResponseBuffer(res: Response, maxBytes: number): Promise<Buffer> {
+  const contentLengthHeader = res.headers.get('content-length');
+  if (contentLengthHeader) {
+    const declaredSize = Number(contentLengthHeader);
+    if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+      throw Object.assign(new Error('ফাইলটি ৬০MB সীমার চেয়ে বড়।'), { statusCode: 413 });
+    }
+  }
+
+  if (!res.body) {
+    const ab = await res.arrayBuffer();
+    if (ab.byteLength > maxBytes) {
+      throw Object.assign(new Error('ফাইলটি ৬০MB সীমার চেয়ে বড়।'), { statusCode: 413 });
+    }
+    return Buffer.from(ab);
+  }
+
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw Object.assign(new Error('ফাইলটি ৬০MB সীমার চেয়ে বড়।'), { statusCode: 413 });
+      }
+      chunks.push(Buffer.from(value));
+    }
+  }
+  return Buffer.concat(chunks, total);
+}
+
+app.post('/api/source-bridge/import', async (req, res) => {
+  const authCheck = await verifyAdminFirebaseToken(req);
+  if (!authCheck.ok) {
+    return res.status(401).json({ success: false, error: authCheck.error || 'Unauthorized' });
+  }
+
+  const { sourceUrl, brandName = 'KhelaDekH', appName = 'Connected Source App', stripAds = true } = req.body || {};
+  const parsed = isSafePublicHttpUrl(typeof sourceUrl === 'string' ? sourceUrl.trim() : '');
+  if (!parsed) {
+    return res.status(400).json({
+      success: false,
+      error: 'বৈধ পাবলিক http:// বা https:// লিংক প্রদান করুন (লোকালহোস্ট বা প্রাইভেট IP গ্রহণযোগ্য নয়)।',
+    });
+  }
+
+  try {
+    const { response: upstream, finalUrl } = await fetchSafePublicUrlWithRedirects(parsed, 25000);
+
+    if (!upstream.ok) {
+      return res.status(502).json({
+        success: false,
+        error: `সোর্স লিংক থেকে HTTP ${upstream.status} পাওয়া গেছে।`,
+      });
+    }
+
+    const contentType = (upstream.headers.get('content-type') || '').toLowerCase();
+    const contentDisposition = (upstream.headers.get('content-disposition') || '').toLowerCase();
+    const rawBuf = await readBoundedResponseBuffer(upstream, 60 * 1024 * 1024);
+
+    if (rawBuf.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'সোর্স লিংক থেকে কোনো ডেটা পাওয়া যায়নি।',
+      });
+    }
+
+    const hasZipMagic = rawBuf.length >= 4 && rawBuf.readUInt32LE(0) === 0x04034b50;
+    const looksLikeApkOrZip =
+      hasZipMagic ||
+      /\.(apk|zip)(\?|$)/i.test(finalUrl) ||
+      /\.(apk|zip)/i.test(contentDisposition) ||
+      contentType.includes('android.package-archive') ||
+      contentType.includes('application/zip');
+
+    if (looksLikeApkOrZip) {
+      const extractedText = extractTextFromApkZipBuffer(rawBuf);
+      const result = extractCleanChannelsFromContent(extractedText, {
+        brandName,
+        appName,
+        stripAds: Boolean(stripAds),
+      });
+      return res.json({
+        success: true,
+        appName,
+        sourceType: 'apk',
+        totalFound: result.channels.length,
+        adsBlockedCount: result.adsBlockedCount,
+        channels: result.channels,
+      });
+    }
+
+    // Decode bounded text (up to 6MB for non-APK text playlists/JSON/HTML)
+    const bodyText = rawBuf.subarray(0, 6 * 1024 * 1024).toString('utf8');
+
+    // If URL itself is directly an HLS playlist (.m3u8) with video segments (not a multi-channel .m3u directory)
+    if (finalUrl.toLowerCase().includes('.m3u8') || contentType.includes('mpegurl')) {
+      if (!bodyText.includes('#EXTINF:-1') && (bodyText.includes('#EXT-X-TARGETDURATION') || bodyText.includes('#EXT-X-STREAM-INF'))) {
+        const { strippedCount } = stripAdsFromM3u8Playlist(bodyText);
+        return res.json({
+          success: true,
+          appName,
+          sourceType: 'm3u',
+          totalFound: 1,
+          adsBlockedCount: strippedCount,
+          channels: [
+            {
+              channelNumber: 901,
+              id: `brand_src_${Date.now().toString(36)}_1`,
+              name: `${appName || brandName} লাইভ (Ad-Free)`,
+              category: 'sports',
+              country: 'Global',
+              logo: null,
+              streamUrl: finalUrl,
+              quality: '1080p Ad-Free HLS',
+              isLive: true,
+              featured: true,
+              language: brandName,
+            },
+          ],
+        });
+      }
+      const result = extractCleanChannelsFromContent(bodyText, {
+        baseUrl: finalUrl,
+        brandName,
+        appName,
+        stripAds: Boolean(stripAds),
+      });
+      return res.json({
+        success: true,
+        appName,
+        sourceType: 'm3u',
+        totalFound: result.channels.length,
+        adsBlockedCount: result.adsBlockedCount,
+        channels: result.channels,
+      });
+    }
+
+    const result = extractCleanChannelsFromContent(bodyText, {
+      baseUrl: finalUrl,
+      brandName,
+      appName,
+      stripAds: Boolean(stripAds),
+    });
+
+    return res.json({
+      success: true,
+      appName,
+      sourceType: contentType.includes('json') ? 'json' : 'website',
+      totalFound: result.channels.length,
+      adsBlockedCount: result.adsBlockedCount,
+      channels: result.channels,
+    });
+  } catch (err: any) {
+    const status = typeof err?.statusCode === 'number' ? err.statusCode : 502;
+    return res.status(status).json({
+      success: false,
+      error: status === 413 ? err.message : `সোর্স অ্যাপস থেকে স্ট্রিম সংগ্রহ ব্যর্থ হয়েছে: ${err.message || 'Timeout'}`,
+    });
+  }
+});
+
+app.post(
+  '/api/source-bridge/extract-file',
+  express.raw({ type: 'application/octet-stream', limit: '60mb' }),
+  async (req, res) => {
+    const authCheck = await verifyAdminFirebaseToken(req);
+    if (!authCheck.ok) {
+      return res.status(401).json({ success: false, error: authCheck.error || 'Unauthorized' });
+    }
+
+    const bodyBuf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (bodyBuf.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ফাইলটি খালি বা পড়া যায়নি। অনুগ্রহ করে .apk, .m3u, .m3u8, .json বা .html ফাইল আপলোড করুন।',
+      });
+    }
+
+    const rawName = typeof req.query.filename === 'string' ? req.query.filename : 'uploaded-app';
+    const appName = typeof req.query.appName === 'string' && req.query.appName.trim()
+      ? req.query.appName.trim()
+      : rawName.replace(/\.[^.]+$/, '');
+    const brandName = typeof req.query.brandName === 'string' && req.query.brandName.trim()
+      ? req.query.brandName.trim()
+      : 'KhelaDekH';
+    const stripAds = req.query.stripAds !== 'false';
+
+    try {
+      const isZipApk = bodyBuf.length >= 4 && bodyBuf.readUInt32LE(0) === 0x04034b50;
+      const extractedText = isZipApk
+        ? extractTextFromApkZipBuffer(bodyBuf)
+        : bodyBuf.toString('utf8');
+
+      const result = extractCleanChannelsFromContent(extractedText, {
+        brandName,
+        appName,
+        stripAds,
+      });
+
+      return res.json({
+        success: true,
+        appName,
+        sourceType: isZipApk ? 'apk' : 'm3u',
+        totalFound: result.channels.length,
+        adsBlockedCount: result.adsBlockedCount,
+        channels: result.channels,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: `অ্যাপস ফাইল বিশ্লেষণে ত্রুটি: ${err.message || 'Parse error'}`,
+      });
+    }
+  }
+);
 
 async function startServer() {
   // Warm up Real-Time Sports cache immediately and keep refreshing every 1 minute

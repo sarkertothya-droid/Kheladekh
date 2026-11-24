@@ -156,6 +156,8 @@ export const INITIAL_NEWS: NewsArticle[] = [
 
 export const INITIAL_SETTINGS: SiteSettings = {
   siteName: 'KhelaDekH',
+  ownerName: '',
+  logoUrl: '/src/assets/images/kheladekh_logo_1793952334814.jpg',
   tagline: 'সরাসরি বিশ্ব ক্রীড়া সম্প্রচার, রিয়েল-টাইম লাইভ স্কোর ও ৫০০+ টিভি চ্যানেল',
   contactEmail: 'factsknown178@gmail.com',
   footerText: '© 2026 KhelaDekH Broadcast Network. All rights reserved.',
@@ -163,6 +165,17 @@ export const INITIAL_SETTINGS: SiteSettings = {
     'KhelaDekH respects your privacy. We collect only the account information you provide (such as your name, email address, and saved sports preferences) to personalize your experience.',
   termsOfService:
     'By accessing KhelaDekH, you agree to use the platform for personal sports viewing, live telemetry, and information.',
+  adFreeMode: true,
+  sourceAppConfig: {
+    enabled: false,
+    appName: '',
+    sourceUrl: '',
+    sourceType: 'website',
+    autoSyncStreams: true,
+    stripAds: true,
+    importedCount: 0,
+    adsBlockedCount: 0,
+  },
   preRollAd: {
     enabled: false,
     durationSeconds: 0,

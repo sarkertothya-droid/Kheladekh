@@ -16,12 +16,21 @@ export const VERIFIED_SPORTS_STREAMS = {
     'https://www.youtube-nocookie.com/embed/live_stream?channel=UC48Zc5trlPUvDIbCAaMdLiQ',
   GTV_LIVE:
     'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8',
+  WILLOW_SPORTS: 'https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8',
+  CRICKET_GOLD:
+    'https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/manifest.m3u8',
+  DD_SPORTS:
+    'https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8',
+  BEIN_XTRA: 'https://bein-xtra-bein.amagi.tv/playlist.m3u8',
   ACC_SPORTS: 'https://raycom-accdn-firetv.amagi.tv/playlist.m3u8',
   FIVE_PLUS:
     'https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_plus/live.livx/playlist.m3u8',
   FIFA_PLUS:
-    'https://a62dad94.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWV1X0ZJRkFQbHVzRW5nbGlzaF9ITFM/playlist.m3u8',
+    'https://95cedebd.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/Vml6aW9fRklGQVBsdXNFbmdsaXNoX0hMUw/playlist.m3u8',
   RED_BULL_TV: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',
+  EUROVISION_SPORT:
+    'https://amg26268-amg26268c34-amgplt0018.playout.now3.amagi.tv/ts-us-e2-n1/playlist/amg26268-amg26268c34-amgplt0018/playlist.m3u8',
+  FUBO_SPORTS: 'https://dnf08l6u6uxnz.cloudfront.net/master.m3u8',
   ACI_SPORT_TV: 'https://webstream.multistream.it/memfs/e2cb3629-c1a2-495b-b43a-9eb386f04ed8.m3u8',
   IRAQIA_SPORT: 'https://imn-live.esite-lab.com/hls/iraqia-sports-1.m3u8',
   ANTENA_SPORT: 'https://stream1.antenaplay.ro/as/AS.ro/chunklist.m3u8',

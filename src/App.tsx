@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { DataProvider } from './context/DataContext';
+import { DataProvider, useData } from './context/DataContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/Navbar';
 import { NotificationPermissionBanner } from './components/NotificationPermissionBanner';
@@ -23,11 +24,22 @@ import { AdminPage } from './pages/AdminPage';
 import { TvPage } from './pages/TvPage';
 import { StadiumPage } from './pages/StadiumPage';
 
+function BrandMetadataSync() {
+  const { settings } = useData();
+  useEffect(() => {
+    const brand = settings.siteName?.trim() || 'KhelaDekH';
+    const tag = settings.tagline?.trim() || 'Live Sports & TV Network';
+    document.title = `${brand} — ${tag}`;
+  }, [settings.siteName, settings.tagline]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <DataProvider>
+          <BrandMetadataSync />
           <NotificationProvider>
             <div className="min-h-screen flex flex-col bg-[#080B12] text-white">
               <Navbar />

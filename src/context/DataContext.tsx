@@ -26,6 +26,7 @@ import {
   Category,
   Competition,
   ContactMessage,
+  LiveTvChannel,
   NewsArticle,
   NotificationPreferences,
   SiteSettings,
@@ -93,6 +94,8 @@ interface DataContextType {
   saveCategory: (cat: Category) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   saveSettings: (newSettings: SiteSettings) => Promise<void>;
+  customChannels: LiveTvChannel[];
+  saveCustomChannels: (channels: LiveTvChannel[]) => Promise<void>;
 }
 
 import { resolveMatchCaptains, VERIFIED_SPORTS_STREAMS } from '../data/captainsData';
@@ -150,7 +153,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [news, setNews] = useState<NewsArticle[]>(INITIAL_NEWS);
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
-  const [settings, setSettings] = useState<SiteSettings>(INITIAL_SETTINGS);
+  const [settings, setSettings] = useState<SiteSettings>(() => {
+    try {
+      const saved = localStorage.getItem('kheladekh_site_settings_v1');
+      if (saved) return { ...INITIAL_SETTINGS, ...JSON.parse(saved) };
+    } catch {}
+    return INITIAL_SETTINGS;
+  });
+  const [customChannels, setCustomChannels] = useState<LiveTvChannel[]>(() => {
+    try {
+      const saved = localStorage.getItem('kheladekh_brand_channels_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [loading, setLoading] = useState(true);
   const [isFirestoreConnected, setIsFirestoreConnected] = useState(false);
   const [autoSyncing, setAutoSyncing] = useState(false);
@@ -612,10 +631,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       doc(db, 'settings', 'global'),
       (snap) => {
         if (snap.exists()) {
-          setSettings(snap.data() as SiteSettings);
+          const merged = { ...INITIAL_SETTINGS, ...(snap.data() as SiteSettings) };
+          setSettings(merged);
+          try {
+            localStorage.setItem('kheladekh_site_settings_v1', JSON.stringify(merged));
+          } catch {}
         }
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'settings/global')
+    );
+
+    const unsubBrandChannels = onSnapshot(
+      doc(db, 'settings', 'brand_channels'),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as { channels?: LiveTvChannel[] };
+          if (Array.isArray(data?.channels)) {
+            setCustomChannels(data.channels);
+            try {
+              localStorage.setItem('kheladekh_brand_channels_v1', JSON.stringify(data.channels));
+            } catch {}
+          }
+        }
+      },
+      (err) => console.warn('Brand channels listener note:', err)
     );
 
     return () => {
@@ -627,6 +666,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubNews();
       unsubCats();
       unsubSettings();
+      unsubBrandChannels();
     };
   }, []);
 
@@ -889,11 +929,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const saveSettings = async (newSettings: SiteSettings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem('kheladekh_site_settings_v1', JSON.stringify(newSettings));
+    } catch {}
     try {
       await setDoc(doc(db, 'settings', 'global'), newSettings);
       await logAudit('SAVE_SETTINGS', 'settings', 'global');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+    }
+  };
+
+  const saveCustomChannels = async (channels: LiveTvChannel[]) => {
+    const cleanList = channels.slice(0, 120);
+    setCustomChannels(cleanList);
+    try {
+      localStorage.setItem('kheladekh_brand_channels_v1', JSON.stringify(cleanList));
+    } catch {}
+    try {
+      await setDoc(doc(db, 'settings', 'brand_channels'), {
+        channels: cleanList,
+        updatedAt: new Date().toISOString(),
+      });
+      await logAudit('SAVE_BRAND_CHANNELS', 'settings', 'brand_channels');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/brand_channels');
     }
   };
 
@@ -938,6 +999,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         saveCategory,
         deleteCategory,
         saveSettings,
+        customChannels,
+        saveCustomChannels,
       }}
     >
       {children}

@@ -9,8 +9,9 @@ import { AutoSyncBar } from '../components/AutoSyncBar';
 import { StadiumSoundboard } from '../components/StadiumSoundboard';
 
 export const HomePage: React.FC = () => {
-  const { events, sports, news, loading } = useData();
+  const { events, sports, news, loading, settings } = useData();
   const [selectedSport, setSelectedSport] = useState<string>('all');
+  const brandName = settings.siteName?.trim() || 'KhelaDekH';
 
   const publishedEvents = events.filter((e) => e.published);
   const filteredEvents =
@@ -72,7 +73,7 @@ export const HomePage: React.FC = () => {
 
         <div className="relative md:absolute md:inset-0 flex flex-col justify-end p-6 sm:p-10 md:p-12 max-w-2xl">
           <p className="text-xs font-semibold text-[#00B7FF] tracking-wide mb-2">
-            KhelaDekH Sports &amp; Entertainment
+            {brandName} Sports &amp; Entertainment{settings.adFreeMode !== false ? ' • 100% Ad-Free' : ''}
           </p>
           <h1
             className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-tight leading-tight"
@@ -126,7 +127,7 @@ export const HomePage: React.FC = () => {
           <div className="space-y-2 max-w-xl">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-red-500/20 to-purple-500/20 border border-red-500/30 text-red-400 text-xs font-mono font-bold">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span>অন্য কোনো ওয়েবসাইটে নেই • শুধু KhelaDekH-এ!</span>
+              <span>অন্য কোনো ওয়েবসাইটে নেই • শুধু {brandName}-এ!</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
               <span>স্টেডিয়াম স্টুডিও প্রো™ (৪-স্ক্রিন মাল্টিভিউ)</span>

@@ -35,19 +35,22 @@ import {
   Server,
   Search,
   Link2,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
 import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { db, uploadMediaFile } from '../lib/firebase';
+import { db, uploadMediaFile } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useLiveTelemetry } from '../services/presenceService';
 import { DailyAudienceGraph } from '../components/DailyAudienceGraph';
-import { PreRollAdModal } from '../components/PreRollAdModal';
-import { resetAdCooldown, getRemainingCooldownMinutes } from '../services/adService';
-import { AuditLog, ContactMessage, EventStatus, SportEvent, UserProfile, StreamServer, PreRollAdConfig } from '../types';
+import { SourceBridgeTab } from '../components/SourceBridgeTab';
+import { VideoPlayer } from '../components/VideoPlayer';
+import { AuditLog, ContactMessage, EventStatus, SportEvent, UserProfile, StreamServer } from '../types';
 
 type AdminTab =
   | 'dashboard'
+  | 'sourceBridge'
   | 'viewers'
   | 'automation'
   | 'events'
@@ -87,6 +90,7 @@ export const AdminPage: React.FC = () => {
     saveCategory,
     deleteCategory,
     saveSettings,
+    customChannels,
     autoSyncing,
     lastAutoSyncTime,
     syncLiveSportsFromGoogle,
@@ -101,6 +105,7 @@ export const AdminPage: React.FC = () => {
   const [statusMsg, setStatusMsg] = useState('');
   const [quickScoreMap, setQuickScoreMap] = useState<Record<string, string>>({});
   const [testStreamUrl, setTestStreamUrl] = useState<string | null>(null);
+  const [testStreamTitle, setTestStreamTitle] = useState<string>('Live Stream Preview');
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
@@ -145,21 +150,22 @@ export const AdminPage: React.FC = () => {
 
   // Settings form
   const [siteName, setSiteName] = useState(settings.siteName);
+  const [ownerName, setOwnerName] = useState(settings.ownerName || '');
+  const [logoUrl, setLogoUrl] = useState(settings.logoUrl || '');
   const [tagline, setTagline] = useState(settings.tagline);
   const [contactEmail, setContactEmail] = useState(settings.contactEmail);
   const [footerText, setFooterText] = useState(settings.footerText);
+  const [adFreeMode, setAdFreeMode] = useState<boolean>(settings.adFreeMode ?? true);
 
-  // 12-Second / 12-Hour Pre-Roll Ad State
-  const [adEnabled, setAdEnabled] = useState(settings.preRollAd?.enabled ?? true);
-  const [adDuration, setAdDuration] = useState(settings.preRollAd?.durationSeconds ?? 12);
-  const [adFrequency, setAdFrequency] = useState(settings.preRollAd?.frequencyHours ?? 12);
-  const [adTitle, setAdTitle] = useState(settings.preRollAd?.title ?? 'KhelaDekH অফিসিয়াল স্পোর্টস পার্টনার স্পনসর');
-  const [adDesc, setAdDesc] = useState(settings.preRollAd?.description ?? 'এইচডি লাইভ ক্রিকেট, ফুটবল ম্যাচ ও মেগা স্পোর্টস ওয়েলকাম বোনাস! এখনই ভিজিট করে আপনার বিশেষ অফারটি লুফে নিন।');
-  const [adTargetUrl, setAdTargetUrl] = useState(settings.preRollAd?.targetUrl ?? 'https://uplcm.com/4/12214527');
-  const [adCtaText, setAdCtaText] = useState(settings.preRollAd?.ctaText ?? 'অফারটি দেখুন (Claim Offer)');
-  const [adImageUrl, setAdImageUrl] = useState(settings.preRollAd?.imageUrl ?? '/src/assets/images/hero_stadium_night_1793946251936.jpg');
-  const [testAdModalOpen, setTestAdModalOpen] = useState(false);
-  const [cooldownRemaining, setCooldownRemaining] = useState(getRemainingCooldownMinutes(12));
+  useEffect(() => {
+    setSiteName(settings.siteName);
+    setOwnerName(settings.ownerName || '');
+    setLogoUrl(settings.logoUrl || '');
+    setTagline(settings.tagline);
+    setContactEmail(settings.contactEmail);
+    setFooterText(settings.footerText);
+    setAdFreeMode(settings.adFreeMode ?? true);
+  }, [settings]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -202,7 +208,9 @@ export const AdminPage: React.FC = () => {
           👑
         </div>
         <div>
-          <h2 className="text-2xl font-black text-white">KhelaDekH অ্যাডমিন প্যানেল</h2>
+          <h2 className="text-2xl font-black text-white">
+            {settings.siteName || 'KhelaDekH'} অ্যাডমিন প্যানেল
+          </h2>
           <p className="text-xs text-[#A5B1C2] mt-1.5 leading-relaxed">
             এই প্যানেলটি শুধুমাত্র অ্যাডমিনের জন্য সংরক্ষিত।
             <br />
@@ -474,6 +482,12 @@ export const AdminPage: React.FC = () => {
   const sidebarItems: { id: AdminTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'dashboard', label: 'Dashboard Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
     {
+      id: 'sourceBridge',
+      label: 'অ্যাপস ব্রিজ ও ব্র্যান্ডিং',
+      icon: <ShieldCheck className="w-4 h-4 text-[#16D98A]" />,
+      badge: customChannels.length > 0 ? `${customChannels.length} Ad-Free` : 'Ad-Free',
+    },
+    {
       id: 'viewers',
       label: 'লাইভ দর্শক (Live Viewers)',
       icon: <Radio className="w-4 h-4 text-red-400 animate-pulse" />,
@@ -499,7 +513,9 @@ export const AdminPage: React.FC = () => {
       {/* Admin Sidebar */}
       <aside className="w-full lg:w-64 shrink-0 bg-[#101722] rounded-2xl border border-white/10 p-4 space-y-1 self-start">
         <div className="px-3 py-2 mb-2">
-          <p className="font-display text-sm font-bold text-white">KhelaDekH Admin</p>
+          <p className="font-display text-sm font-bold text-white">
+            {settings.siteName || 'KhelaDekH'} Admin
+          </p>
           <p className="text-xs text-[#A5B1C2] truncate">{user.email}</p>
         </div>
 
@@ -566,6 +582,31 @@ export const AdminPage: React.FC = () => {
               >
                 <Database className="w-4 h-4" />
                 Seed Initial Data
+              </button>
+            </div>
+
+            {/* Quick-Access White-Label App Bridge Banner */}
+            <div className="bg-gradient-to-r from-[#101722] via-[#102521] to-[#101722] rounded-2xl border border-[#16D98A]/35 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#16D98A]/20 text-[#16D98A] text-[10px] font-mono font-bold">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  অ্যাড-মুক্ত অ্যাপস ব্রিজ ও নিজস্ব ব্র্যান্ড
+                </span>
+                <h2 className="text-base font-bold text-white">
+                  আপনার অ্যাপস বা ওয়েবসাইট থেকে অ্যাড বাদ দিয়ে "{settings.siteName || 'KhelaDekH'}" নামে লাইভ চালান
+                </h2>
+                <p className="text-xs text-[#A5B1C2]">
+                  {customChannels.length > 0
+                    ? `বর্তমানে ${customChannels.length}টি অ্যাড-মুক্ত কাস্টম চ্যানেল আপনার নামে লাইভ চলছে।`
+                    : 'অনুমোদিত অ্যাপসের লিংক বা .APK/.M3U ফাইল দিয়ে সরাসরি বিজ্ঞাপনমুক্ত লাইভ স্ট্রিম যুক্ত করুন।'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('sourceBridge')}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#16D98A] to-[#00B7FF] text-[#080B12] text-xs font-black shrink-0 hover:brightness-110 transition-all shadow-md"
+              >
+                অ্যাপস ব্রিজ ও ব্র্যান্ডিং খুলুন →
               </button>
             </div>
 
@@ -688,6 +729,16 @@ export const AdminPage: React.FC = () => {
               todayMatchWatchers={telemetry.totalMatchWatchers}
             />
           </div>
+        )}
+
+        {activeTab === 'sourceBridge' && (
+          <SourceBridgeTab
+            onNotify={notify}
+            onTestPlay={(url, title) => {
+              setTestStreamUrl(url);
+              setTestStreamTitle(title || 'Ad-Free Source Preview');
+            }}
+          />
         )}
 
         {/* Dedicated Live Viewers Real-time Telemetry Tab */}
@@ -2160,225 +2211,122 @@ export const AdminPage: React.FC = () => {
 
         {activeTab === 'settings' && (
           <div className="space-y-6 max-w-4xl">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h1 className="font-display text-2xl font-extrabold text-white">
-                  ওয়েবসাইট সেটিংস ও বিজ্ঞাপন নিয়ন্ত্রণ (Settings & Ads)
+                  ওয়েবসাইট ব্র্যান্ডিং ও বিজ্ঞাপনমুক্ত মোড (Brand &amp; Zero-Ad Settings)
                 </h1>
                 <p className="text-xs text-[#A5B1C2] mt-1">
-                  ওয়েবসাইটের সাধারণ সেটিংস এবং খেলা দেখার পূর্বে ১২ সেকেন্ডের বিজ্ঞাপন পরিচালনা করুন।
+                  ওয়েবসাইটের নিজস্ব নাম, মালিকের তথ্য এবং ১০০% বিজ্ঞাপনমুক্ত স্ট্রিমিং সুরক্ষা নিয়ন্ত্রণ করুন।
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('sourceBridge')}
+                className="px-4 py-2 rounded-xl bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-bold self-start"
+              >
+                অ্যাপস ব্রিজ খুলুন →
+              </button>
             </div>
 
-            {/* 12-Second Pre-Roll / App Entry Ad Management Card */}
-            <div className="bg-[#151E2B] rounded-2xl border border-amber-500/20 p-6 space-y-5 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-              
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+            {/* 100% Ad-Free Zero-Ad Shield Status Card */}
+            <div className="bg-[#151E2B] rounded-2xl border border-[#16D98A]/30 p-6 space-y-4 relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                    <Sparkles className="w-5 h-5" />
+                  <div className="w-11 h-11 rounded-xl bg-[#16D98A]/15 border border-[#16D98A]/30 flex items-center justify-center text-[#16D98A]">
+                    <ShieldCheck className="w-6 h-6" />
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-white flex items-center gap-2">
-                      খেলা দেখার পূর্বের বিজ্ঞাপন (১২ সেকেন্ড কাউন্টডাউন)
-                      {adEnabled ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                          সক্রিয় (Active)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-[#A5B1C2]">
-                          বন্ধ (Disabled)
-                        </span>
-                      )}
+                      ১০০% বিজ্ঞাপনমুক্ত মোড (Zero-Ad Shield)
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          adFreeMode
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-white/10 text-[#A5B1C2]'
+                        }`}
+                      >
+                        {adFreeMode ? 'সক্রিয় (0% Ads)' : 'বন্ধ'}
+                      </span>
                     </h2>
-                    <p className="text-xs text-[#A5B1C2]">
-                      ব্যবহারকারী অ্যাপে ঢুকলে বা খেলায় ক্লিক করলে ১২ সেকেন্ড অ্যাড চলবে, তারপর ১২ ঘণ্টা আর আসবে না।
+                    <p className="text-xs text-[#A5B1C2] mt-0.5">
+                      প্রি-রোল পপ-আপ বিজ্ঞাপন বন্ধ আছে এবং সোর্স অ্যাপস/প্লেলিস্টের অ্যাড ডোমেইন ও HLS অ্যাড সেগমেন্ট সার্ভার থেকেই বাদ দেওয়া হচ্ছে।
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAdEnabled(!adEnabled)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                      adEnabled
-                        ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20'
-                        : 'bg-white/10 text-white hover:bg-white/20'
-                    }`}
-                  >
-                    {adEnabled ? 'বিজ্ঞাপন চালু আছে' : 'বিজ্ঞাপন বন্ধ করুন'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Status and Testing Banner */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="bg-[#101722] p-3.5 rounded-xl border border-white/5">
-                  <span className="text-[11px] text-[#A5B1C2] block">বিজ্ঞাপন প্রদর্শনের সময়</span>
-                  <div className="text-lg font-mono font-bold text-amber-400 mt-1 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4" />
-                    <span>{adDuration} সেকেন্ড (কাউন্টডাউন)</span>
-                  </div>
-                </div>
-
-                <div className="bg-[#101722] p-3.5 rounded-xl border border-white/5">
-                  <span className="text-[11px] text-[#A5B1C2] block">পুনরায় প্রদর্শনের বিরতি (Capping)</span>
-                  <div className="text-lg font-mono font-bold text-[#00B7FF] mt-1 flex items-center gap-1.5">
-                    <Calendar className="w-4 h-4" />
-                    <span>{adFrequency} ঘণ্টা সম্পূর্ণ বিজ্ঞাপনমুক্ত</span>
-                  </div>
-                </div>
-
-                <div className="bg-[#101722] p-3.5 rounded-xl border border-white/5">
-                  <span className="text-[11px] text-[#A5B1C2] block">আপনার বর্তমান ব্রাউজার স্ট্যাটাস</span>
-                  <div className="text-xs font-medium text-white mt-1.5 flex items-center gap-1.5">
-                    {cooldownRemaining > 0 ? (
-                      <span className="text-amber-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        কুলডাউনে আছে: আর {Math.ceil(cooldownRemaining / 60)} ঘণ্টা বাকি
-                      </span>
-                    ) : (
-                      <span className="text-emerald-400 flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5" />
-                        এখনই বিজ্ঞাপন দেখানোর জন্য প্রস্তুত
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons for Testing and Cooldown Reset */}
-              <div className="flex flex-wrap items-center gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => setTestAdModalOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-xs font-bold flex items-center gap-2 hover:opacity-95 shadow-md shadow-amber-500/20"
+                  onClick={() => setAdFreeMode(!adFreeMode)}
+                  className={`px-4 py-2 rounded-xl text-xs font-black transition-all shrink-0 ${
+                    adFreeMode
+                      ? 'bg-[#16D98A] text-[#080B12]'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
                 >
-                  <Play className="w-4 h-4" />
-                  ১২ সেকেন্ডের বিজ্ঞাপন লাইভ টেস্ট করুন (Preview)
+                  {adFreeMode ? '🛡️ অ্যাড-মুক্ত মোড চালু' : 'চালু করুন'}
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetAdCooldown();
-                    setCooldownRemaining(0);
-                    notify('১২ ঘণ্টার বিজ্ঞাপন কুলডাউন রিসেট করা হয়েছে!');
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-2 transition-all border border-white/10"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  ১২ ঘণ্টার লিমিট রিসেট করুন (Reset Cooldown)
-                </button>
-              </div>
-
-              {/* Form Inputs for Ad Details */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-white/10">
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
-                    বিজ্ঞাপনের শিরোনাম (Ad Title)
-                  </label>
-                  <input
-                    type="text"
-                    value={adTitle}
-                    onChange={(e) => setAdTitle(e.target.value)}
-                    placeholder="যেমন: KhelaDekH অফিসিয়াল স্পোর্টস পার্টনার স্পনসর"
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
-                    বিজ্ঞাপনের বর্ণনা (Ad Description)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={adDesc}
-                    onChange={(e) => setAdDesc(e.target.value)}
-                    placeholder="বিজ্ঞাপনের অফার বা বিস্তারিত তথ্য লিখুন..."
-                    className="w-full p-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none resize-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
-                    স্পনসর / টার্গেট লিংক (Sponsor Link / URL)
-                  </label>
-                  <input
-                    type="url"
-                    value={adTargetUrl}
-                    onChange={(e) => setAdTargetUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
-                    বাটন টেক্সট (CTA Button Text)
-                  </label>
-                  <input
-                    type="text"
-                    value={adCtaText}
-                    onChange={(e) => setAdCtaText(e.target.value)}
-                    placeholder="যেমন: অফারটি দেখুন (Claim Offer)"
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-[#A5B1C2] mb-1">
-                    বিজ্ঞাপনের ব্যানার ইমেজ লিংক (Ad Image URL)
-                  </label>
-                  <input
-                    type="url"
-                    value={adImageUrl}
-                    onChange={(e) => setAdImageUrl(e.target.value)}
-                    placeholder="/src/assets/images/hero_stadium_night_1793946251936.jpg"
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:border-amber-500 outline-none"
-                  />
-                </div>
               </div>
             </div>
 
-            {/* General Site Settings Form */}
+            {/* General Site Settings & Branding Form */}
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
                 await saveSettings({
                   ...settings,
-                  siteName,
+                  siteName: siteName.trim() || 'KhelaDekH',
+                  ownerName: ownerName.trim(),
+                  logoUrl: logoUrl.trim() || settings.logoUrl,
                   tagline,
                   contactEmail,
                   footerText,
+                  adFreeMode,
                   preRollAd: {
-                    enabled: adEnabled,
-                    durationSeconds: adDuration,
-                    frequencyHours: adFrequency,
-                    title: adTitle,
-                    description: adDesc,
-                    targetUrl: adTargetUrl,
-                    ctaText: adCtaText,
-                    imageUrl: adImageUrl,
-                    badgeText: 'স্পন্সর বিজ্ঞাপন (Sponsored)',
+                    enabled: false,
+                    durationSeconds: 0,
+                    frequencyHours: 0,
+                    title: '',
+                    description: '',
+                    badgeText: '',
+                    imageUrl: '',
+                    targetUrl: '',
+                    ctaText: '',
                   },
                 });
-                notify('ওয়েবসাইট সেটিংস ও বিজ্ঞাপনের কনফিগারেশন সংরক্ষিত হয়েছে!');
+                notify('ওয়েবসাইটের নাম, ব্র্যান্ডিং ও বিজ্ঞাপনমুক্ত সেটিংস সংরক্ষিত হয়েছে!');
               }}
               className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4"
             >
-              <h2 className="text-base font-bold text-white mb-2">সাধারণ ওয়েবসাইট সেটিংস</h2>
+              <h2 className="text-base font-bold text-white mb-2">সাধারণ ওয়েবসাইট ও ব্র্যান্ড সেটিংস</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-[#A5B1C2] mb-1">Site Name</label>
+                  <label className="block text-xs text-[#A5B1C2] mb-1">Site / Brand Name</label>
                   <input
                     type="text"
                     value={siteName}
                     onChange={(e) => setSiteName(e.target.value)}
                     className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#A5B1C2] mb-1">Owner Name</label>
+                  <input
+                    type="text"
+                    value={ownerName}
+                    onChange={(e) => setOwnerName(e.target.value)}
+                    placeholder="আপনার নাম"
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#A5B1C2] mb-1">Logo URL</label>
+                  <input
+                    type="text"
+                    value={logoUrl}
+                    onChange={(e) => setLogoUrl(e.target.value)}
+                    placeholder="/src/assets/images/kheladekh_logo_1793952334814.jpg"
+                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-xs font-mono text-white"
                   />
                 </div>
                 <div>
@@ -2439,23 +2387,32 @@ export const AdminPage: React.FC = () => {
         )}
       </div>
 
-      {/* Pre-Roll Ad Test Modal for Admin Preview */}
-      <PreRollAdModal
-        isOpen={testAdModalOpen}
-        onClose={() => setTestAdModalOpen(false)}
-        config={{
-          enabled: adEnabled,
-          durationSeconds: adDuration,
-          frequencyHours: adFrequency,
-          title: adTitle,
-          description: adDesc,
-          targetUrl: adTargetUrl,
-          ctaText: adCtaText,
-          imageUrl: adImageUrl,
-          badgeText: 'অ্যাডমিন টেস্ট প্রিভিউ (Admin Preview)',
-        }}
-        contextText="অ্যাডমিন প্যানেল থেকে ১২ সেকেন্ডের বিজ্ঞাপন টেস্ট প্রিভিউ"
-      />
+      {/* Live Stream Preview Modal */}
+      {testStreamUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="w-full max-w-4xl bg-[#101722] border border-white/15 rounded-3xl p-4 sm:p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-[#16D98A] font-mono font-bold">
+                  🛡️ অ্যাড-মুক্ত লাইভ টেস্ট প্লেয়ার ({settings.siteName || 'KhelaDekH'})
+                </p>
+                <h3 className="text-sm sm:text-base font-bold text-white truncate">
+                  {testStreamTitle}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTestStreamUrl(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white"
+                title="বন্ধ করুন"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <VideoPlayer src={testStreamUrl} title={testStreamTitle} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

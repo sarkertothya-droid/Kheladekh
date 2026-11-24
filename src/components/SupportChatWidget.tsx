@@ -45,7 +45,9 @@ const QUICK_PROMPTS = [
 
 export const SupportChatWidget: React.FC = () => {
   const { user, profile } = useAuth();
-  const { events } = useData();
+  const { events, settings } = useData();
+  const brandName = settings.siteName?.trim() || 'KhelaDekH';
+  const aiDisplayName = `${brandName} AI`;
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,9 +65,9 @@ export const SupportChatWidget: React.FC = () => {
     id: 'welcome_kheladekh_ai',
     chatId,
     senderId: 'kheladekh_ai',
-    senderName: 'KhelaDekH AI',
+    senderName: aiDisplayName,
     senderRole: 'assistant' as any,
-    text: 'স্বাগতম! আমি KhelaDekH AI। খেলার লাইভ স্কোর, দলের অধিনায়ক, টিভি চ্যানেল কিংবা পৃথিবীর যেকোনো বিষয়ে আমাকে প্রশ্ন করতে পারেন।',
+    text: `স্বাগতম! আমি ${aiDisplayName}। খেলার লাইভ স্কোর, দলের অধিনায়ক, টিভি চ্যানেল কিংবা পৃথিবীর যেকোনো বিষয়ে আমাকে প্রশ্ন করতে পারেন।`,
     createdAt: new Date().toISOString(),
   };
 
@@ -141,14 +143,14 @@ export const SupportChatWidget: React.FC = () => {
       const data = await res.json();
       const replyText =
         data?.reply ||
-        'আমি KhelaDekH AI বলছি — আপনার প্রশ্নটি প্রসেস করতে এই মুহূর্তে সাময়িক বিলম্ব হচ্ছে, দয়া করে আবার চেষ্টা করুন।';
+        `আমি ${aiDisplayName} বলছি — আপনার প্রশ্নটি প্রসেস করতে এই মুহূর্তে সাময়িক বিলম্ব হচ্ছে, দয়া করে আবার চেষ্টা করুন।`;
 
       const aiMsgId = `msg_${Date.now()}_kdai`;
       const aiMsg: SupportChatMessage = {
         id: aiMsgId,
         chatId,
         senderId: 'kheladekh_ai',
-        senderName: 'KhelaDekH AI',
+        senderName: aiDisplayName,
         senderRole: 'support',
         text: replyText,
         sources: Array.isArray(data?.sources) ? data.sources : [],
@@ -162,7 +164,7 @@ export const SupportChatWidget: React.FC = () => {
         id: `msg_${Date.now()}_err`,
         chatId,
         senderId: 'kheladekh_ai',
-        senderName: 'KhelaDekH AI',
+        senderName: aiDisplayName,
         senderRole: 'support',
         text: 'দুঃখিত, সংযোগে সাময়িক সমস্যা হয়েছে। অনুগ্রহ করে আবার প্রশ্ন করুন।',
         createdAt: new Date().toISOString(),
@@ -181,14 +183,14 @@ export const SupportChatWidget: React.FC = () => {
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
           className="relative px-4 py-3 rounded-2xl bg-gradient-to-r from-[#00B7FF] via-[#0094D9] to-[#16D98A] text-[#080B12] font-black text-xs sm:text-sm flex items-center gap-2 shadow-2xl shadow-[#00B7FF]/35 hover:scale-105 active:scale-95 transition-transform ring-2 ring-white/30"
-          title="KhelaDekH AI কে যেকোনো প্রশ্ন করুন"
+          title={`${aiDisplayName} কে যেকোনো প্রশ্ন করুন`}
         >
           <Sparkles className="w-4 h-4 fill-current" />
-          <span>KhelaDekH AI</span>
+          <span>{aiDisplayName}</span>
         </button>
       </div>
 
-      {/* KhelaDekH AI Chat Modal */}
+      {/* Brand AI Chat Modal */}
       {isOpen && (
         <div className="fixed bottom-36 md:bottom-24 right-4 sm:right-6 z-50 w-[92vw] sm:w-[430px] max-h-[580px] rounded-3xl bg-[#0D131F]/95 backdrop-blur-2xl border border-white/20 shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5">
           {/* Header */}
@@ -202,7 +204,7 @@ export const SupportChatWidget: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-display text-sm font-black text-white flex items-center gap-2">
-                  <span>KhelaDekH AI</span>
+                  <span>{aiDisplayName}</span>
                   <span className="text-[10px] font-mono font-bold text-[#16D98A]">ONLINE</span>
                 </h3>
                 <p className="text-[11px] text-[#A5B1C2]">
@@ -249,7 +251,7 @@ export const SupportChatWidget: React.FC = () => {
                   className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
                 >
                   <div className="flex items-center gap-1.5 text-[10px] text-[#A5B1C2] mb-1 font-mono">
-                    <span>{isUser ? msg.senderName : 'KhelaDekH AI'}</span>
+                    <span>{isUser ? msg.senderName : aiDisplayName}</span>
                     <span>·</span>
                     <span>
                       {new Date(msg.createdAt).toLocaleTimeString([], {
@@ -291,7 +293,7 @@ export const SupportChatWidget: React.FC = () => {
               <div className="flex items-start gap-2 text-xs text-[#00B7FF]">
                 <div className="px-3 py-2 rounded-2xl rounded-tl-none bg-[#151E2B] border border-white/10 flex items-center gap-2">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>KhelaDekH AI চিন্তা করছে...</span>
+                  <span>{aiDisplayName} চিন্তা করছে...</span>
                 </div>
               </div>
             )}

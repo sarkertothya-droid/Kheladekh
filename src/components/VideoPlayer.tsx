@@ -63,7 +63,7 @@ const isBlockedNonSportStream = (url?: string): boolean => {
   );
 };
 
-export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
+export const buildDefaultServers = (primaryUrl?: string, brandName = 'KhelaDekH'): StreamServer[] => {
   const cleanPrimary =
     primaryUrl && primaryUrl.trim() && !isBlockedNonSportStream(primaryUrl)
       ? primaryUrl.trim()
@@ -72,7 +72,7 @@ export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
   return [
     {
       id: 'server-1',
-      name: 'KhelaDekH সার্ভার ১ (আল্ট্রা এইচডি ১০৮০p)',
+      name: `${brandName} সার্ভার ১ (আল্ট্রা এইচডি ১০৮০p)`,
       quality: '1080p Ultra HD',
       url: cleanPrimary,
       badge: 'সবচেয়ে দ্রুত ও স্পষ্ট',
@@ -88,7 +88,7 @@ export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
     },
     {
       id: 'server-3',
-      name: 'KhelaDekH সার্ভার ৩ (গ্লোবাল এইচডি ৭২০p)',
+      name: `${brandName} সার্ভার ৩ (গ্লোবাল এইচডি ৭২০p)`,
       quality: '720p HD',
       url: VERIFIED_HLS_STREAM_3,
       badge: 'স্থিতিশীল ব্যাকআপ',
@@ -96,7 +96,7 @@ export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
     },
     {
       id: 'server-4',
-      name: 'KhelaDekH সার্ভার ৪ (ইউরোপ মিরর)',
+      name: `${brandName} সার্ভার ৪ (ইউরোপ মিরর)`,
       quality: 'HD Mirror',
       url: VERIFIED_HLS_STREAM_4,
       badge: 'বিকল্প মিরর',
@@ -104,7 +104,7 @@ export const buildDefaultServers = (primaryUrl?: string): StreamServer[] => {
     },
     {
       id: 'server-5',
-      name: 'KhelaDekH সার্ভার ৫ (ইমার্জেন্সি স্পোর্টস ফিড)',
+      name: `${brandName} সার্ভার ৫ (ইমার্জেন্সি স্পোর্টস ফিড)`,
       quality: 'Direct Sports',
       url: VERIFIED_MP4_STREAM_5,
       badge: 'ইমার্জেন্সি ব্যাকআপ',
@@ -147,8 +147,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => clearInterval(clock);
   }, []);
 
+  const {
+    settings,
+    vpnMode: globalVpnMode,
+    vpnRegion: globalVpnRegion,
+    updateVpnSettings,
+    getStreamNetworkConfig,
+  } = useData();
+  const brandName = settings.siteName?.trim() || 'KhelaDekH';
+
   // Active servers configuration: sanitize non-sports URLs & ensure 5-tier sports setup
-  const baseDefaults = React.useMemo(() => buildDefaultServers(src), [src]);
+  const baseDefaults = React.useMemo(() => buildDefaultServers(src, brandName), [src, brandName]);
   const activeServers: StreamServer[] = React.useMemo(() => {
     if (servers && servers.length > 0) {
       const sanitized = servers.map((srv, idx) =>
@@ -208,12 +217,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [currentResolution, setCurrentResolution] = useState<string>(initialResolution);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [hlsLevels, setHlsLevels] = useState<{ id: string; height: number; index: number }[]>([]);
-  const {
-    vpnMode: globalVpnMode,
-    vpnRegion: globalVpnRegion,
-    updateVpnSettings,
-    getStreamNetworkConfig,
-  } = useData();
 
   const [vpnActive, setVpnActive] = useState<boolean>(globalVpnMode);
   const [vpnRegion, setVpnRegion] = useState<VpnRegion>(globalVpnRegion);
@@ -958,16 +961,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         )}
 
-        {/* Top Bar: KhelaDekH LIVE Broadcast Watermark & Second-by-Second Clock */}
+        {/* Top Bar: Dynamic Brand LIVE Broadcast Watermark & Second-by-Second Clock */}
         <div
           className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between pointer-events-none transition-opacity duration-300 z-20 ${
             showControls ? 'opacity-100' : 'opacity-80'
           }`}
         >
           <div className="flex items-center gap-3">
-            <span className="font-display text-xs sm:text-sm font-extrabold tracking-tight text-white drop-shadow">
-              Khela<span className="text-[#00B7FF]">DekH</span>
-            </span>
+            {brandName === 'KhelaDekH' ? (
+              <span className="font-display text-xs sm:text-sm font-extrabold tracking-tight text-white drop-shadow">
+                Khela<span className="text-[#00B7FF]">DekH</span>
+              </span>
+            ) : (
+              <span className="font-display text-xs sm:text-sm font-extrabold tracking-tight text-white drop-shadow">
+                {brandName}
+              </span>
+            )}
             <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-600/90 text-white text-[10px] font-mono font-bold tracking-wider uppercase shadow">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
               LIVE · {liveTimeStr}

@@ -102,6 +102,21 @@ const ChannelLogoImage: React.FC<{
 };
 
 export const TvPage: React.FC = () => {
+  const {
+    settings,
+    customChannels,
+    vpnMode: globalVpnMode,
+    vpnRegion: globalVpnRegion,
+    updateVpnSettings,
+    getStreamNetworkConfig,
+  } = useData();
+  const brandName = settings.siteName?.trim() || 'KhelaDekH';
+
+  const allChannels = useMemo(
+    () => [...customChannels, ...CHANNELS],
+    [customChannels]
+  );
+
   // Default to 'bangladesh' category so user immediately sees all top BD channels
   const [selectedCategory, setSelectedCategory] = useState<string>('bangladesh');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -139,9 +154,11 @@ export const TvPage: React.FC = () => {
 
   // Filter channels based on category and search query
   const filteredChannels = useMemo(() => {
-    let list = CHANNELS;
+    let list = allChannels;
 
-    if (selectedCategory === 'favorites') {
+    if (selectedCategory === 'custom_brand') {
+      list = customChannels;
+    } else if (selectedCategory === 'favorites') {
       list = list.filter((c) => favorites.includes(c.id));
     } else if (selectedCategory === 'bangladesh') {
       list = list.filter((c) => c.country === 'BD' || c.language === 'Bangla');
@@ -162,14 +179,17 @@ export const TvPage: React.FC = () => {
 
     // Always sort by clean channel serial number
     return [...list].sort((a, b) => (a.channelNumber || 0) - (b.channelNumber || 0));
-  }, [selectedCategory, searchQuery, favorites]);
+  }, [allChannels, customChannels, selectedCategory, searchQuery, favorites]);
 
   // Verified adaptive sports-only fallback streams (never duplicates GTV_LIVE so failover always tries fresh working CDNs)
   const VERIFIED_FALLBACK_STREAMS = useMemo(() => [
-    VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
-    VERIFIED_SPORTS_STREAMS.FIVE_PLUS,
-    VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
+    VERIFIED_SPORTS_STREAMS.WILLOW_SPORTS,
     VERIFIED_SPORTS_STREAMS.FIFA_PLUS,
+    VERIFIED_SPORTS_STREAMS.BEIN_XTRA,
+    VERIFIED_SPORTS_STREAMS.CRICKET_GOLD,
+    VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
+    VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
+    VERIFIED_SPORTS_STREAMS.FIVE_PLUS,
     VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT,
   ], []);
 
@@ -190,13 +210,6 @@ export const TvPage: React.FC = () => {
     });
     return list;
   }, [selectedChannel, VERIFIED_FALLBACK_STREAMS]);
-
-  const {
-    vpnMode: globalVpnMode,
-    vpnRegion: globalVpnRegion,
-    updateVpnSettings,
-    getStreamNetworkConfig,
-  } = useData();
 
   // Current stream index within availableStreams
   const [activeStreamIndex, setActiveStreamIndex] = useState<number>(0);
@@ -516,7 +529,7 @@ export const TvPage: React.FC = () => {
           <div className="px-4 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-right">
             <p className="text-[10px] text-[#A5B1C2] uppercase font-mono">মোট চ্যানেল</p>
             <p className="font-display text-xl font-black text-[#00B7FF] tabular-nums">
-              {CHANNELS.length}+
+              {allChannels.length}+
             </p>
           </div>
         </div>
@@ -896,6 +909,20 @@ export const TvPage: React.FC = () => {
 
             {/* Quick Filter Pills (Bangladesh is the first priority tab) */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {customChannels.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('custom_brand')}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1 ${
+                    selectedCategory === 'custom_brand'
+                      ? 'bg-[#16D98A] text-[#080B12] border-[#16D98A] shadow-md shadow-[#16D98A]/20'
+                      : 'bg-[#101722] text-[#16D98A] border-[#16D98A]/30 hover:bg-[#16D98A]/10'
+                  }`}
+                >
+                  <span>📱 {brandName} ({customChannels.length})</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setSelectedCategory('bangladesh')}
@@ -944,7 +971,7 @@ export const TvPage: React.FC = () => {
                     : 'bg-[#101722] text-[#A5B1C2] border-white/10 hover:text-white'
                 }`}
               >
-                সকল ({CHANNELS.length})
+                সকল ({allChannels.length})
               </button>
 
               <button
@@ -1045,8 +1072,73 @@ export const TvPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Categorized Sections: Bangladeshi Channels, Sports, News */}
+      {/* Categorized Sections: Custom Brand Apps Channels, Bangladeshi Channels, Sports, News */}
       <div className="space-y-8 pt-4">
+        {customChannels.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-[#16D98A]/15 text-[#16D98A] border border-[#16D98A]/30">
+                  <ShieldCheck className="w-5 h-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2">
+                    <span>📱 {brandName} এক্সক্লুসিভ চ্যানেল (১০০% অ্যাড-মুক্ত)</span>
+                  </h2>
+                  <p className="text-xs text-[#A5B1C2]">
+                    কানেক্টেড সোর্স অ্যাপস থেকে সকল বিজ্ঞাপন বাদ দিয়ে আপনার ব্র্যান্ডের অধীনে সম্প্রচারিত লাইভ স্ট্রিম
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('custom_brand');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="text-xs text-[#16D98A] hover:underline font-semibold"
+              >
+                সবগুলো দেখুন →
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {customChannels.map((ch) => (
+                <div
+                  key={ch.id}
+                  onClick={() => {
+                    setSelectedChannel(ch);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer group space-y-2.5 ${
+                    selectedChannel?.id === ch.id
+                      ? 'bg-[#16D98A]/15 border-[#16D98A] shadow-lg shadow-[#16D98A]/20 ring-1 ring-[#16D98A]'
+                      : 'bg-[#151E2B] border-[#16D98A]/25 hover:border-[#16D98A] hover:bg-[#182333]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded bg-[#16D98A]/20 text-[#16D98A] text-[10px] font-mono font-black border border-[#16D98A]/30">
+                      #{ch.channelNumber} · Ad-Free
+                    </span>
+                    <span className="w-2 h-2 rounded-full bg-[#16D98A] animate-pulse" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <ChannelLogoImage channel={ch} sizeClass="w-11 h-11" className="bg-[#0b1019] p-1 border-white/15 shadow-md" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-white group-hover:text-[#16D98A] transition-colors truncate">
+                        {ch.name}
+                      </p>
+                      <p className="text-[10px] text-[#A5B1C2] truncate font-mono mt-0.5">
+                        {brandName} · {ch.category.toUpperCase()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Section 1: Top Bangladeshi TV Channels (#1 to #25) */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">

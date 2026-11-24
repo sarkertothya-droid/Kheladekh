@@ -2,11 +2,16 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Trophy, Radio, Tv, Sparkles, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { NotificationDropdown } from './NotificationDropdown';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
   const { user, isAdmin } = useAuth();
+  const { settings } = useData();
+
+  const brandName = settings.siteName?.trim() || 'KhelaDekH';
+  const brandLogo = settings.logoUrl?.trim() || '/src/assets/images/kheladekh_logo_1793952334814.jpg';
 
   const isActive = (path: string) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
@@ -22,13 +27,20 @@ export const Navbar: React.FC = () => {
             className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight text-white whitespace-nowrap shrink-0"
           >
             <img
-              src="/src/assets/images/kheladekh_logo_1793952334814.jpg"
-              alt="KhelaDekH Logo"
+              src={brandLogo}
+              alt={`${brandName} Logo`}
               className="w-7 h-7 rounded-lg object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = '/src/assets/images/kheladekh_logo_1793952334814.jpg';
+              }}
             />
-            <span>
-              Khela<span className="text-[#00B7FF]">DekH</span>
-            </span>
+            {brandName === 'KhelaDekH' ? (
+              <span>
+                Khela<span className="text-[#00B7FF]">DekH</span>
+              </span>
+            ) : (
+              <span className="text-white">{brandName}</span>
+            )}
           </Link>
 
           {/* Zone 2: Navigation Links */}

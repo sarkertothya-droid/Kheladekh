@@ -154,13 +154,29 @@ export interface PreRollAdConfig {
   ctaText: string;
 }
 
+export interface SourceAppConfig {
+  enabled: boolean;
+  appName: string;
+  sourceUrl: string;
+  sourceType: 'website' | 'm3u' | 'json' | 'apk';
+  autoSyncStreams: boolean;
+  stripAds: boolean;
+  lastSyncedAt?: string;
+  importedCount?: number;
+  adsBlockedCount?: number;
+}
+
 export interface SiteSettings {
   siteName: string;
+  ownerName?: string;
+  logoUrl?: string;
   tagline: string;
   contactEmail: string;
   footerText: string;
   privacyPolicy: string;
   termsOfService: string;
+  adFreeMode?: boolean;
+  sourceAppConfig?: SourceAppConfig;
   preRollAd?: PreRollAdConfig;
 }
 

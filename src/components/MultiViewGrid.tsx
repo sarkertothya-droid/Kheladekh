@@ -353,7 +353,7 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
 };
 
 export const MultiViewGrid: React.FC = () => {
-  const { events } = useData();
+  const { events, customChannels } = useData();
   const liveEvents = events.filter((e) => e.published && e.status === 'LIVE');
   const allEvents = events.filter((e) => e.published);
 
@@ -432,8 +432,8 @@ export const MultiViewGrid: React.FC = () => {
     }
   };
 
-  // Filtered lists for selector modal
-  const filteredTvChannels = ALL_CHANNELS.filter((ch) => {
+  // Filtered lists for selector modal (include custom ad-free imported channels first)
+  const filteredTvChannels = [...customChannels, ...ALL_CHANNELS].filter((ch) => {
     if (sourceFilter === 'sports_tv' && ch.category !== 'sports') return false;
     if (!sourceSearch.trim()) return true;
     const query = sourceSearch.toLowerCase();

@@ -4,6 +4,8 @@ import { useData } from '../context/DataContext';
 
 export const Footer: React.FC = () => {
   const { settings } = useData();
+  const brandName = settings.siteName?.trim() || 'KhelaDekH';
+  const brandLogo = settings.logoUrl?.trim() || '/src/assets/images/kheladekh_logo_1793952334814.jpg';
 
   return (
     <footer className="bg-[#101722] border-t border-white/10 mt-16 pb-20 md:pb-8">
@@ -11,19 +13,27 @@ export const Footer: React.FC = () => {
         <div>
           <Link to="/" className="inline-flex items-center gap-2 font-display text-lg font-extrabold text-white">
             <img
-              src="/src/assets/images/kheladekh_logo_1793952334814.jpg"
-              alt="KhelaDekH Logo"
+              src={brandLogo}
+              alt={`${brandName} Logo`}
               className="w-6 h-6 rounded-md object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = '/src/assets/images/kheladekh_logo_1793952334814.jpg';
+              }}
             />
-            <span>
-              Khela<span className="text-[#00B7FF]">DekH</span>
-            </span>
+            {brandName === 'KhelaDekH' ? (
+              <span>
+                Khela<span className="text-[#00B7FF]">DekH</span>
+              </span>
+            ) : (
+              <span>{brandName}</span>
+            )}
           </Link>
           <p className="text-xs text-[#A5B1C2] mt-1">
             {settings.tagline || 'সরাসরি বিশ্ব ক্রীড়া সম্প্রচার, লাইভ স্কোর, অধিনায়ক ম্যাচআপ ও ৫০০+ লাইভ টিভি চ্যানেল।'}
           </p>
           <p className="text-[11px] text-[#64748B] mt-2">
-            {settings.footerText || '© 2026 KhelaDekH Broadcast Network.'}
+            {settings.footerText ||
+              `© 2026 ${brandName}${settings.ownerName ? ` — ${settings.ownerName}` : ''}. All rights reserved.`}
           </p>
         </div>
 
