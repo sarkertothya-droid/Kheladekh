@@ -64,7 +64,7 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
               </span>
             </div>
             <p className="text-[11px] text-[#A5B1C2] mt-0.5">
-              প্রতি ১ মিনিট পর পর রিয়েল-টাইম লাইভ স্কোর ও খেলার সূচি স্বয়ংক্রিয়ভাবে আপডেট হয় (কোনো ডামি স্কোর নেই)।
+              কোনো মেসেজ বা রিফ্রেশ ছাড়াই প্রতি ৬০ সেকেন্ডে BBC Sport, Cricbuzz, ESPN ও Google থেকে খেলা, স্কোর ও টিভি ফিড অটোমেটিক আপডেট হয়।
             </p>
           </div>
         </div>
@@ -73,7 +73,7 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
         <div className="flex items-center gap-3 self-end md:self-auto shrink-0">
           {/* 1-Minute Countdown Display */}
           <div className="px-3 py-1.5 rounded-xl bg-[#080B12] border border-white/10 flex items-center gap-2 font-mono text-xs text-white">
-            <span className="text-[10px] text-[#A5B1C2] uppercase">পরবর্তী সিঙ্ক</span>
+            <span className="text-[10px] text-[#A5B1C2] uppercase">পরবর্তী অটো-সিঙ্ক</span>
             <span className="font-black text-[#00B7FF] tracking-wider text-sm tabular-nums">
               {timeFormatted}
             </span>
@@ -85,7 +85,7 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
             onClick={() => syncLiveSportsFromGoogle(false)}
             disabled={autoSyncing}
             className="px-3.5 py-1.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-md shadow-[#00B7FF]/20 active:scale-95 disabled:opacity-50"
-            title="সার্ভার থেকে এখনই সর্বশেষ লাইভ স্কোর ও খেলা রিফ্রেশ করুন"
+            title="এখনই সর্বশেষ লাইভ স্কোর ও খেলা রিফ্রেশ করুন"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${autoSyncing ? 'animate-spin' : ''}`} />
             <span>{autoSyncing ? 'সিঙ্ক হচ্ছে...' : 'এখনই সিঙ্ক করুন'}</span>
@@ -95,9 +95,9 @@ export const AutoSyncBar: React.FC<{ compact?: boolean }> = ({ compact = false }
 
       {lastAutoSyncTime && (
         <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-[#64748B]">
-          <span>সর্বশেষ যাচাইকৃত সিঙ্ক: {lastAutoSyncTime}</span>
+          <span>সর্বশেষ অটো-আপডেট: {lastAutoSyncTime} (২৪/৭ সক্রিয়)</span>
           <span className="text-[#16D98A] flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> সার্ভার VPN রিলে ও রিয়েল-টাইম স্পোর্টস ফিড সক্রিয়
+            <ShieldCheck className="w-3 h-3" /> BBC · Cricbuzz · ESPN · Google অটো-সিঙ্ক সক্রিয়
           </span>
         </div>
       )}

@@ -11,6 +11,9 @@ import { LiveMatchPoll } from '../components/LiveMatchPoll';
 import { useViewerPresence, useMatchViewers } from '../services/presenceService';
 import { StadiumSoundboard } from '../components/StadiumSoundboard';
 import { MomentumRadar } from '../components/MomentumRadar';
+import { PreRollAdModal } from '../components/PreRollAdModal';
+import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
+import { shouldDisplayAd } from '../services/adService';
 import { StreamServer } from '../types';
 import { resolveMatchCaptains } from '../data/captainsData';
 
@@ -33,6 +36,21 @@ export const EventDetailsPage: React.FC = () => {
   );
   const [isSearchingStreams, setIsSearchingStreams] = useState(false);
   const [autoSearchStatus, setAutoSearchStatus] = useState<string | null>(null);
+  const [showPreRollAd, setShowPreRollAd] = useState(false);
+
+  useEffect(() => {
+    if (!event?.id) return;
+    if (
+      settings.adFreeMode === false &&
+      settings.adControl?.adsEnabled &&
+      settings.preRollAd?.enabled &&
+      shouldDisplayAd(settings.preRollAd.frequencyHours || 12)
+    ) {
+      setShowPreRollAd(true);
+    } else {
+      setShowPreRollAd(false);
+    }
+  }, [event?.id, settings.adFreeMode, settings.adControl?.adsEnabled, settings.preRollAd?.enabled, settings.preRollAd?.frequencyHours]);
 
   // Trigger live stream auto-discovery whenever match is loaded or VPN mode changes
   const discoverLiveStreams = (forceRefresh = false) => {
@@ -129,6 +147,11 @@ export const EventDetailsPage: React.FC = () => {
 
   return (
     <div className="space-y-10">
+      <PreRollAdModal
+        isOpen={showPreRollAd}
+        onClose={() => setShowPreRollAd(false)}
+        contextText={event.title}
+      />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <Link
@@ -234,6 +257,8 @@ export const EventDetailsPage: React.FC = () => {
         autoFullscreen={autoFullscreen}
         initialResolution={initialResolution}
       />
+
+      <AdsterraBanner320x50 />
 
       {/* Team Captains Matchup Card */}
       <div className="bg-gradient-to-r from-[#101722] via-[#151E2B] to-[#101722] rounded-2xl border border-white/10 p-4 sm:p-6 shadow-xl">
@@ -474,6 +499,8 @@ export const EventDetailsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <AdsterraNativeBanner />
 
       {/* Related Events */}
       {relatedEvents.length > 0 && (

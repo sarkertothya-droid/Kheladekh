@@ -33,6 +33,7 @@ import rawChannelsData from '../data/tvChannels.json';
 import { LiveTvChannel, VpnRegion } from '../types';
 import { VERIFIED_SPORTS_STREAMS } from '../data/captainsData';
 import { useData } from '../context/DataContext';
+import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
 
 const CHANNELS: LiveTvChannel[] = rawChannelsData as LiveTvChannel[];
 
@@ -890,6 +891,8 @@ export const TvPage: React.FC = () => {
               <span>{favorites.includes(selectedChannel.id) ? 'ফেভারিটে যুক্ত' : 'ফেভারিটে যোগ করুন'}</span>
             </button>
           </div>
+
+          <AdsterraBanner320x50 />
         </div>
 
         {/* Right 1 Col: Channel List with Serial Numbers & Categories */}
@@ -1200,6 +1203,8 @@ export const TvPage: React.FC = () => {
             ))}
           </div>
         </div>
+
+        <AdsterraNativeBanner />
 
         {/* Section 2: Global Sports TV Channels */}
         <div className="space-y-4">

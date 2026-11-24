@@ -109,17 +109,9 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
           `${cleanBrand} — সরাসরি অ্যাড-মুক্ত লাইভ খেলা ও টিভি সম্প্রচার নেটওয়ার্ক`,
         footerText: computedFooter,
         adFreeMode,
-        preRollAd: {
-          enabled: false,
-          durationSeconds: 0,
-          frequencyHours: 0,
-          title: '',
-          description: '',
-          badgeText: '',
-          imageUrl: '',
-          targetUrl: '',
-          ctaText: '',
-        },
+        adControl: settings.adControl
+          ? { ...settings.adControl, adsEnabled: !adFreeMode }
+          : undefined,
       };
       await saveSettings(updated);
       onNotify(`সফল! এখন পুরো ওয়েবসাইট "${cleanBrand}" নামে ও অ্যাড-মুক্তভাবে চলছে।`);
@@ -798,16 +790,16 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
           </div>
         </div>
 
-        {/* Quick 1-Click Legal Free-to-Air & Official FAST Sports Packs */}
+        {/* Quick 1-Click Live Sports & Bangladeshi TV Packs */}
         <div className="p-4 rounded-xl bg-[#0B1019] border border-[#16D98A]/30 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <p className="text-xs font-bold text-white flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-[#16D98A]" />
-                <span>১-ক্লিক বৈধ ফ্রি স্পোর্টস ও টিভি প্যাক (Verified Legal Official FAST / FTA)</span>
+                <span>১-ক্লিক লাইভ স্পোর্টস ও টিভি চ্যানেল প্যাক (HD Live Broadcast)</span>
               </p>
               <p className="text-[11px] text-[#A5B1C2] mt-0.5">
-                কোনো আনঅফিসিয়াল APK ছাড়াই ১০০% বৈধ ক্রিকেট, ফুটবল ও বাংলাদেশি ফ্রি-টু-এয়ার চ্যানেল সরাসরি আপনার নামে যুক্ত করুন।
+                সরাসরি ক্রিকেট, ফুটবল, টেনিস ও বাংলাদেশি টিভি চ্যানেল আপনার ব্র্যান্ডের নামে এক ক্লিকেই যুক্ত করুন।
               </p>
             </div>
           </div>
@@ -820,7 +812,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
               className="px-3.5 py-2 rounded-xl bg-[#16D98A] hover:bg-[#1FE896] text-[#080B12] text-xs font-black transition-all flex items-center gap-1.5 disabled:opacity-50"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>বৈধ স্পোর্টস ও ক্রিকেট প্যাক (১২+ অফিশিয়াল HD)</span>
+              <span>লাইভ স্পোর্টস ও ক্রিকেট চ্যানেল প্যাক (১২+ HD)</span>
             </button>
 
             <button
@@ -830,13 +822,13 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
                 const u = 'https://iptv-org.github.io/iptv/categories/sports.m3u';
                 setBridgeMode('url');
                 setSourceUrl(u);
-                setAppName('Legal Global FTA Sports');
-                void runUrlImport(u, 'Legal Global FTA Sports');
+                setAppName('Global Live Sports TV');
+                void runUrlImport(u, 'Global Live Sports TV');
               }}
               className="px-3.5 py-2 rounded-xl bg-[#00B7FF]/15 hover:bg-[#00B7FF]/25 border border-[#00B7FF]/35 text-[#00B7FF] text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
             >
               <Globe className="w-3.5 h-3.5" />
-              <span>গ্লোবাল FTA স্পোর্টস স্ক্যান (IPTV-Org)</span>
+              <span>গ্লোবাল স্পোর্টস চ্যানেল স্ক্যান</span>
             </button>
 
             <button
@@ -846,13 +838,13 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
                 const u = 'https://iptv-org.github.io/iptv/countries/bd.m3u';
                 setBridgeMode('url');
                 setSourceUrl(u);
-                setAppName('Bangladesh Legal FTA');
-                void runUrlImport(u, 'Bangladesh Legal FTA');
+                setAppName('Bangladesh Live TV');
+                void runUrlImport(u, 'Bangladesh Live TV');
               }}
               className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
             >
               <Tv className="w-3.5 h-3.5" />
-              <span>বাংলাদেশ বৈধ চ্যানেল স্ক্যান</span>
+              <span>বাংলাদেশ লাইভ টিভি স্ক্যান</span>
             </button>
           </div>
         </div>

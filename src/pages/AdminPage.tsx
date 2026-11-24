@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   Calendar,
@@ -36,6 +36,10 @@ import {
   Search,
   Link2,
   ShieldCheck,
+  Megaphone,
+  Tv,
+  KeyRound,
+  RotateCcw,
   X,
 } from 'lucide-react';
 import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -46,25 +50,89 @@ import { useLiveTelemetry } from '../services/presenceService';
 import { DailyAudienceGraph } from '../components/DailyAudienceGraph';
 import { SourceBridgeTab } from '../components/SourceBridgeTab';
 import { VideoPlayer } from '../components/VideoPlayer';
-import { AuditLog, ContactMessage, EventStatus, SportEvent, UserProfile, StreamServer } from '../types';
+import { PreRollAdModal } from '../components/PreRollAdModal';
+import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
+import { isSafeAdUrl, resetAdCooldown } from '../services/adService';
+import {
+  AdControlConfig,
+  AuditLog,
+  ContactMessage,
+  EventStatus,
+  PreRollAdConfig,
+  SportEvent,
+  StreamServer,
+  UserProfile,
+} from '../types';
 
 type AdminTab =
   | 'dashboard'
-  | 'sourceBridge'
   | 'viewers'
-  | 'automation'
   | 'events'
+  | 'ads'
+  | 'automation'
+  | 'sourceBridge'
   | 'sports'
   | 'teams'
   | 'competitions'
   | 'news'
   | 'categories'
-  | 'users'
   | 'media'
-  | 'notifications'
+  | 'users'
   | 'messages'
+  | 'notifications'
   | 'settings'
   | 'audit';
+
+const DEFAULT_AD_CONTROL: AdControlConfig = {
+  adsEnabled: false,
+  bannerEnabled: true,
+  nativeEnabled: true,
+  smartlinkUrl: '',
+  bannerImageUrl: '',
+  bannerTitle: 'Watch HD Sports Anywhere',
+  bannerSubtitle: 'Official Partner Offer',
+  bannerCta: 'Explore Now',
+  nativeTitle: 'Sponsored Sports Offer',
+  nativeDescription: 'Unlock exclusive match day highlights and partner deals.',
+  nativeImageUrl: '',
+  nativeTargetUrl: '',
+  nativeCta: 'Open Offer',
+};
+
+const DEFAULT_PREROLL: PreRollAdConfig = {
+  enabled: false,
+  durationSeconds: 8,
+  frequencyHours: 12,
+  title: 'Featured Match Partner',
+  description: 'Support live sports broadcasts by visiting our featured partner offer.',
+  badgeText: 'SPONSORED',
+  imageUrl: '',
+  targetUrl: '',
+  ctaText: 'Visit Sponsor',
+};
+
+const SPORT_TV_MAPPINGS = [
+  {
+    sport: 'Cricket',
+    channels: ['T Sports Live', 'Willow Sports HD', 'GTV Live', 'DD Sports', 'Cricket Gold HD'],
+    badge: 'CRICKET',
+  },
+  {
+    sport: 'Football',
+    channels: ['beIN SPORTS XTRA', 'FIFA+ Live', 'TyC Sports Internacional', 'Inter TV'],
+    badge: 'FOOTBALL',
+  },
+  {
+    sport: 'Tennis',
+    channels: ['Tennis Channel HD', 'Eurovision Sport EBU'],
+    badge: 'TENNIS',
+  },
+  {
+    sport: 'Basketball',
+    channels: ['Fubo Sports Network', 'ACC Digital Network'],
+    badge: 'BASKETBALL',
+  },
+];
 
 export const AdminPage: React.FC = () => {
   const { user, isAdmin, loading: authLoading, logout, signInWithGoogle } = useAuth();
@@ -157,6 +225,18 @@ export const AdminPage: React.FC = () => {
   const [footerText, setFooterText] = useState(settings.footerText);
   const [adFreeMode, setAdFreeMode] = useState<boolean>(settings.adFreeMode ?? true);
 
+  // Ad Manager state
+  const [adForm, setAdForm] = useState<AdControlConfig>({
+    ...DEFAULT_AD_CONTROL,
+    ...(settings.adControl || {}),
+  });
+  const [preRollForm, setPreRollForm] = useState<PreRollAdConfig>({
+    ...DEFAULT_PREROLL,
+    ...(settings.preRollAd || {}),
+  });
+  const [savingAds, setSavingAds] = useState(false);
+  const [previewPreRollOpen, setPreviewPreRollOpen] = useState(false);
+
   useEffect(() => {
     setSiteName(settings.siteName);
     setOwnerName(settings.ownerName || '');
@@ -165,6 +245,18 @@ export const AdminPage: React.FC = () => {
     setContactEmail(settings.contactEmail);
     setFooterText(settings.footerText);
     setAdFreeMode(settings.adFreeMode ?? true);
+    setAdForm({
+      ...DEFAULT_AD_CONTROL,
+      ...(settings.adControl || {}),
+      adsEnabled:
+        settings.adFreeMode === false
+          ? Boolean(settings.adControl?.adsEnabled ?? true)
+          : Boolean(settings.adControl?.adsEnabled ?? false),
+    });
+    setPreRollForm({
+      ...DEFAULT_PREROLL,
+      ...(settings.preRollAd || {}),
+    });
   }, [settings]);
 
   useEffect(() => {
@@ -198,36 +290,54 @@ export const AdminPage: React.FC = () => {
   }, [isAdmin]);
 
   if (authLoading) {
-    return <div className="h-64 rounded-2xl bg-[#151E2B] animate-pulse" />;
+    return (
+      <div className="space-y-4">
+        <div className="h-14 rounded-2xl bg-[#0F1623] border border-white/[0.08] animate-pulse" />
+        <div className="h-64 rounded-2xl bg-[#0F1623] border border-white/[0.08] animate-pulse" />
+      </div>
+    );
   }
+
+  const brandName = settings.siteName?.trim() || 'KhelaDekH';
+  const brandLogo = settings.logoUrl || '/src/assets/images/kheladekh_logo_1793952334814.jpg';
 
   if (!user || !isAdmin) {
     return (
-      <div className="max-w-md mx-auto my-12 p-6 sm:p-8 rounded-3xl bg-[#101722] border-2 border-amber-500/30 text-center space-y-6 shadow-2xl animate-fade-in">
-        <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto text-2xl shadow">
-          👑
-        </div>
-        <div>
-          <h2 className="text-2xl font-black text-white">
-            {settings.siteName || 'KhelaDekH'} অ্যাডমিন প্যানেল
-          </h2>
-          <p className="text-xs text-[#A5B1C2] mt-1.5 leading-relaxed">
-            এই প্যানেলটি শুধুমাত্র অ্যাডমিনের জন্য সংরক্ষিত।
-            <br />
-            <strong className="text-amber-300 font-mono">factsknown178@gmail.com</strong>
-          </p>
+      <div className="max-w-md mx-auto my-12 p-7 rounded-2xl bg-[#0F1623] border border-white/[0.08] text-center space-y-6">
+        <div className="flex flex-col items-center gap-3">
+          <img
+            src={brandLogo}
+            alt={brandName}
+            className="w-16 h-16 rounded-2xl object-cover border border-white/15 bg-[#080B12]"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                '/src/assets/images/kheladekh_logo_1793952334814.jpg';
+            }}
+          />
+          <div>
+            <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#00B7FF]">
+              Broadcast Control Center
+            </p>
+            <h1 className="font-display text-3xl font-black tracking-tight text-white mt-1">
+              {brandName}
+            </h1>
+            <p className="text-xs text-[#94A3B8] mt-1">
+              Admin Console Sign-In Required
+            </p>
+          </div>
         </div>
 
         {user && !isAdmin ? (
-          <div className="p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-300 space-y-2">
-            <p>বর্তমান একাউন্ট ({user.email}) অ্যাডমিন নয়।</p>
-            <p>অনুগ্রহ করে <strong>factsknown178@gmail.com</strong> দিয়ে সাইন ইন করুন।</p>
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/25 text-xs text-red-300 space-y-3">
+            <p>
+              বর্তমান অ্যাকাউন্টটি ({user.email || user.phoneNumber || 'Guest'}) অ্যাডমিন হিসেবে অনুমোদিত নয়।
+            </p>
             <button
               type="button"
               onClick={logout}
-              className="mt-2 w-full py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg font-bold text-xs"
+              className="w-full py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-200 rounded-xl font-semibold text-xs transition-colors"
             >
-              লগআউট করুন
+              লগআউট করে অ্যাডমিন অ্যাকাউন্টে যান
             </button>
           </div>
         ) : (
@@ -235,7 +345,7 @@ export const AdminPage: React.FC = () => {
             <button
               type="button"
               onClick={signInWithGoogle}
-              className="w-full py-3.5 px-4 rounded-xl bg-white text-[#080B12] font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 hover:bg-amber-300 transition-all shadow-lg active:scale-95 cursor-pointer"
+              className="w-full min-h-[46px] py-3 px-4 rounded-xl bg-white hover:bg-[#E2E8F0] text-[#080B12] font-bold text-sm flex items-center justify-center gap-2.5 transition-colors cursor-pointer"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -243,13 +353,13 @@ export const AdminPage: React.FC = () => {
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
               </svg>
-              <span>Google দিয়ে অ্যাডমিন লগইন</span>
+              <span>{brandName} অ্যাডমিন Google সাইন ইন</span>
             </button>
             <Link
               to="/auth"
-              className="block w-full py-2.5 text-xs text-[#00B7FF] hover:underline font-medium"
+              className="block w-full py-2 text-xs text-[#00B7FF] hover:underline font-medium"
             >
-              ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন &rarr;
+              ইমেইল / ফোন OTP সাইন ইন পেজে যান →
             </Link>
           </div>
         )}
@@ -259,7 +369,58 @@ export const AdminPage: React.FC = () => {
 
   const notify = (msg: string) => {
     setStatusMsg(msg);
-    setTimeout(() => setStatusMsg(''), 3000);
+    setTimeout(() => setStatusMsg(''), 4000);
+  };
+
+  const handleSaveAdsConfig = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const urlFields: Array<[string, string | undefined]> = [
+      ['Smartlink URL', adForm.smartlinkUrl],
+      ['Banner Image URL', adForm.bannerImageUrl],
+      ['Native Target URL', adForm.nativeTargetUrl],
+      ['Native Image URL', adForm.nativeImageUrl],
+      ['Pre-Roll Target URL', preRollForm.targetUrl],
+      ['Pre-Roll Image URL', preRollForm.imageUrl],
+    ];
+    for (const [label, raw] of urlFields) {
+      if (raw && raw.trim() && !isSafeAdUrl(raw)) {
+        notify(`${label} অবশ্যই বৈধ http:// বা https:// লিংক হতে হবে।`);
+        return;
+      }
+    }
+
+    setSavingAds(true);
+    try {
+      const nextAdsEnabled = Boolean(adForm.adsEnabled);
+      await saveSettings({
+        ...settings,
+        adFreeMode: !nextAdsEnabled,
+        adControl: {
+          ...adForm,
+          adsEnabled: nextAdsEnabled,
+          smartlinkUrl: adForm.smartlinkUrl.trim(),
+          bannerImageUrl: adForm.bannerImageUrl?.trim() || '',
+          nativeTargetUrl: adForm.nativeTargetUrl?.trim() || '',
+          nativeImageUrl: adForm.nativeImageUrl?.trim() || '',
+        },
+        preRollAd: {
+          ...preRollForm,
+          durationSeconds: Math.max(0, Math.min(30, Number(preRollForm.durationSeconds || 5))),
+          frequencyHours: Math.max(1, Math.min(72, Number(preRollForm.frequencyHours || 12))),
+          targetUrl: preRollForm.targetUrl.trim(),
+          imageUrl: preRollForm.imageUrl?.trim() || '',
+        },
+      });
+      notify(
+        nextAdsEnabled
+          ? 'Ad Manager সেভ হয়েছে — আপনার কনফিগার করা অ্যাডগুলো এখন ওয়েবসাইটে চালু আছে।'
+          : 'Ad-Free মোড সংরক্ষিত হয়েছে — সকল বিজ্ঞাপন বর্তমানে বন্ধ।'
+      );
+    } catch (err: any) {
+      notify(`সেভ করতে সমস্যা হয়েছে: ${err?.message || 'Permission error'}`);
+    } finally {
+      setSavingAds(false);
+    }
   };
 
   const handleCreateEvent = async (e: React.FormEvent) => {
@@ -276,7 +437,7 @@ export const AdminPage: React.FC = () => {
       sportId: evSport,
       competitionId: evComp,
       teamIds: [],
-      description: evDesc.trim() || 'Official fixture.',
+      description: evDesc.trim() || 'Live sports broadcast.',
       eventDate: evDate,
       eventTime: evTime,
       timezone: 'UTC',
@@ -364,7 +525,7 @@ export const AdminPage: React.FC = () => {
         // Skip malformed dates
       }
     }
-    notify(`Automated Status Engine: Checked matches and updated ${updatedCount} live/finished statuses.`);
+    notify(`Automated Status Engine checked matches and updated ${updatedCount} statuses.`);
   };
 
   const handlePublishAllEvents = async () => {
@@ -375,7 +536,7 @@ export const AdminPage: React.FC = () => {
         count++;
       }
     }
-    notify(`Batch Action: Published ${count} events.`);
+    notify(`Published ${count} events.`);
   };
 
   const handleQuickStatusChange = async (event: SportEvent, newStatus: EventStatus) => {
@@ -413,9 +574,9 @@ export const AdminPage: React.FC = () => {
       if (data.success && Array.isArray(data.servers)) {
         setDiscoveredServers(data.servers);
         setStreamSearchSource(data.source || 'gemini_grounding');
-        notify(`লাইভ স্ট্রিম স্ক্যান সম্পন্ন: ৫টি সার্ভার প্রস্তুত (${data.totalDiscovered} লিংক পাওয়া গেছে)`);
+        notify(`লাইভ টিভি স্ট্রিম স্ক্যান সম্পন্ন: ৫টি সার্ভার প্রস্তুত (${data.totalDiscovered} ফিড পাওয়া গেছে)`);
       } else {
-        notify('স্ট্রিম ডিসকভারিতে সমস্যা হয়েছে, ডিফল্ট সার্ভার তৈরি করা হয়েছে।');
+        notify('স্ট্রিম ডিসকভারিতে সমস্যা হয়েছে, ব্যাকআপ টিভি সার্ভার তৈরি হয়েছে।');
       }
     } catch (err: any) {
       notify(`ত্রুটি: ${err.message}`);
@@ -431,7 +592,7 @@ export const AdminPage: React.FC = () => {
       return;
     }
     if (!discoveredServers || discoveredServers.length === 0) {
-      notify('প্রথমে "ইউটিউব ও ফেসবুকে লাইভ খুঁজুন" বাটনে ক্লিক করে ৫টি সার্ভার তৈরি করুন');
+      notify('প্রথমে লাইভ টিভি স্ট্রিম স্ক্যান করে ৫টি সার্ভার তৈরি করুন');
       return;
     }
     const targetEvent = events.find((e) => e.id === targetId);
@@ -442,17 +603,17 @@ export const AdminPage: React.FC = () => {
       streamServers: discoveredServers,
       authorizedViewingUrl: discoveredServers[0]?.url || targetEvent.authorizedViewingUrl,
     });
-    notify(`সফল হয়েছে! "${targetEvent.title}" ম্যাচে ৫টি সার্ভার সক্রিয় ও সেভ করা হয়েছে।`);
+    notify(`"${targetEvent.title}" ম্যাচে ৫টি টিভি সার্ভার সেভ করা হয়েছে।`);
   };
 
   const handleAutoPilotAllMatches = async () => {
     const liveMatches = events.filter((e) => e.status === 'LIVE' || e.status === 'UPCOMING');
     if (liveMatches.length === 0) {
-      notify('বর্তমানে কোনো লাইভ বা আসন্ন ম্যাচ পাওয়া যায়নি।');
+      notify('বর্তমানে কোনো লাইভ বা আসন্ন ম্যাচ পাওয়া যায়নি।');
       return;
     }
     setDiscoveringStreams(true);
-    notify(`মোট ${liveMatches.length}টি ম্যাচের জন্য ৫টি করে লাইভ স্ট্রিম সার্ভার স্বয়ংক্রিয়ভাবে স্ক্যান ও সিঙ্ক হচ্ছে...`);
+    notify(`মোট ${liveMatches.length}টি ম্যাচের জন্য স্পোর্ট-ম্যাচড টিভি চ্যানেল সেট হচ্ছে...`);
 
     let updatedCount = 0;
     for (const match of liveMatches) {
@@ -476,775 +637,1053 @@ export const AdminPage: React.FC = () => {
       }
     }
     setDiscoveringStreams(false);
-    notify(`সফল হয়েছে! মোট ${updatedCount}টি ম্যাচে স্বয়ংক্রিয়ভাবে ৫টি করে লাইভ সার্ভার যুক্ত করা হয়েছে।`);
+    notify(`মোট ${updatedCount}টি ম্যাচে স্বয়ংক্রিয়ভাবে ৫টি করে লাইভ টিভি সার্ভার যুক্ত হয়েছে।`);
   };
 
-  const sidebarItems: { id: AdminTab; label: string; icon: React.ReactNode; badge?: string }[] = [
-    { id: 'dashboard', label: 'Dashboard Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
+  const sidebarGroups: {
+    title: string;
+    items: { id: AdminTab; label: string; icon: React.ReactNode; badge?: string }[];
+  }[] = [
     {
-      id: 'sourceBridge',
-      label: 'অ্যাপস ব্রিজ ও ব্র্যান্ডিং',
-      icon: <ShieldCheck className="w-4 h-4 text-[#16D98A]" />,
-      badge: customChannels.length > 0 ? `${customChannels.length} Ad-Free` : 'Ad-Free',
+      title: 'Overview',
+      items: [
+        { id: 'dashboard', label: 'Dashboard Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
+        {
+          id: 'viewers',
+          label: 'Live Audience',
+          icon: <Radio className="w-4 h-4 text-red-400" />,
+          badge: telemetry.totalMatchWatchers > 0 ? `${telemetry.totalMatchWatchers}` : undefined,
+        },
+      ],
     },
     {
-      id: 'viewers',
-      label: 'লাইভ দর্শক (Live Viewers)',
-      icon: <Radio className="w-4 h-4 text-red-400 animate-pulse" />,
-      badge: telemetry.totalMatchWatchers > 0 ? `${telemetry.totalMatchWatchers} watching` : undefined,
+      title: 'Broadcast & Ads',
+      items: [
+        { id: 'events', label: 'Match Controller', icon: <Calendar className="w-4 h-4" /> },
+        {
+          id: 'ads',
+          label: 'Ad Manager',
+          icon: <Megaphone className="w-4 h-4 text-amber-400" />,
+          badge: settings.adFreeMode === false && settings.adControl?.adsEnabled ? 'LIVE' : 'OFF',
+        },
+        { id: 'automation', label: 'Auto TV & Feeds', icon: <Zap className="w-4 h-4 text-[#00B7FF]" /> },
+        {
+          id: 'sourceBridge',
+          label: 'Apps Bridge & Brand',
+          icon: <ShieldCheck className="w-4 h-4 text-[#16D98A]" />,
+          badge: customChannels.length > 0 ? `${customChannels.length}` : undefined,
+        },
+      ],
     },
-    { id: 'automation', label: 'Automation & AI Feeds', icon: <Zap className="w-4 h-4 text-[#00B7FF]" /> },
-    { id: 'events', label: 'Match Controller', icon: <Calendar className="w-4 h-4" /> },
-    { id: 'sports', label: 'Sports', icon: <Trophy className="w-4 h-4" /> },
-    { id: 'teams', label: 'Teams', icon: <Users className="w-4 h-4" /> },
-    { id: 'competitions', label: 'Competitions', icon: <Award className="w-4 h-4" /> },
-    { id: 'news', label: 'News & Articles', icon: <Newspaper className="w-4 h-4" /> },
-    { id: 'categories', label: 'Categories', icon: <FolderTree className="w-4 h-4" /> },
-    { id: 'users', label: 'User Profiles', icon: <UserCheck className="w-4 h-4" /> },
-    { id: 'media', label: 'Media Library', icon: <Image className="w-4 h-4" /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell className="w-4 h-4" /> },
-    { id: 'messages', label: 'Contact Messages', icon: <Mail className="w-4 h-4" /> },
-    { id: 'settings', label: 'Website Settings', icon: <Settings className="w-4 h-4" /> },
-    { id: 'audit', label: 'Audit Logs', icon: <FileText className="w-4 h-4" /> },
+    {
+      title: 'Catalog',
+      items: [
+        { id: 'sports', label: 'Sports', icon: <Trophy className="w-4 h-4" /> },
+        { id: 'teams', label: 'Teams', icon: <Users className="w-4 h-4" /> },
+        { id: 'competitions', label: 'Competitions', icon: <Award className="w-4 h-4" /> },
+        { id: 'news', label: 'News & Articles', icon: <Newspaper className="w-4 h-4" /> },
+        { id: 'categories', label: 'Categories', icon: <FolderTree className="w-4 h-4" /> },
+        { id: 'media', label: 'Media Library', icon: <Image className="w-4 h-4" /> },
+      ],
+    },
+    {
+      title: 'System & Auth',
+      items: [
+        { id: 'users', label: 'User Profiles', icon: <UserCheck className="w-4 h-4" /> },
+        { id: 'messages', label: 'Contact Messages', icon: <Mail className="w-4 h-4" /> },
+        { id: 'notifications', label: 'Notifications', icon: <Bell className="w-4 h-4" /> },
+        { id: 'settings', label: 'Settings & Auth', icon: <Settings className="w-4 h-4" /> },
+        { id: 'audit', label: 'Audit Logs', icon: <FileText className="w-4 h-4" /> },
+      ],
+    },
   ];
 
+  const flatSidebarItems = sidebarGroups.flatMap((g) => g.items);
+  const currentTabMeta = flatSidebarItems.find((item) => item.id === activeTab);
+  const adsCurrentlyLive = settings.adFreeMode === false && Boolean(settings.adControl?.adsEnabled);
+  const resetOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+
   return (
-    <div className="flex flex-col lg:flex-row gap-8">
-      {/* Admin Sidebar */}
-      <aside className="w-full lg:w-64 shrink-0 bg-[#101722] rounded-2xl border border-white/10 p-4 space-y-1 self-start">
-        <div className="px-3 py-2 mb-2">
-          <p className="font-display text-sm font-bold text-white">
-            {settings.siteName || 'KhelaDekH'} Admin
-          </p>
-          <p className="text-xs text-[#A5B1C2] truncate">{user.email}</p>
+    <div className="space-y-5">
+      {/* Top Admin Header Bar */}
+      <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <img
+            src={brandLogo}
+            alt={brandName}
+            className="w-9 h-9 rounded-xl object-cover border border-white/10 bg-[#080B12] shrink-0"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                '/src/assets/images/kheladekh_logo_1793952334814.jpg';
+            }}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-mono text-[#64748B]">
+              <span>{brandName} Admin</span>
+              <span>/</span>
+              <span className="text-[#00B7FF]">{currentTabMeta?.label}</span>
+            </div>
+            <p className="text-sm font-bold text-white truncate">
+              {currentTabMeta?.label || 'Dashboard'}
+            </p>
+          </div>
         </div>
 
-        {sidebarItems.map((item) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('ads')}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
+              adsCurrentlyLive
+                ? 'bg-amber-500/15 border-amber-500/35 text-amber-300'
+                : 'bg-[#141D2E] border-white/[0.08] text-[#16D98A]'
+            }`}
+          >
+            <Megaphone className="w-3.5 h-3.5" />
+            <span>{adsCurrentlyLive ? 'Ads: Active' : 'Ads: Ad-Free'}</span>
+          </button>
+
+          <Link
+            to="/"
+            className="px-3 py-1.5 rounded-lg bg-[#141D2E] hover:bg-white/10 border border-white/[0.08] text-xs font-semibold text-white inline-flex items-center gap-1.5 transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-[#00B7FF]" />
+            <span>View Live Site</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Mobile Tab Selector (<lg) */}
+      <div className="lg:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        {flatSidebarItems.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => setActiveTab(item.id)}
-            className={`w-full min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
+            className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 border transition-colors ${
               activeTab === item.id
-                ? 'bg-[#00B7FF] text-[#080B12]'
-                : 'text-[#A5B1C2] hover:text-white hover:bg-white/5'
+                ? 'bg-[#00B7FF] text-[#080B12] border-[#00B7FF]'
+                : 'bg-[#0F1623] text-[#94A3B8] border-white/[0.08] hover:text-white'
             }`}
           >
-            <div className="flex items-center gap-3">
-              {item.icon}
-              <span>{item.label}</span>
-            </div>
-            {item.badge && (
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  activeTab === item.id
-                    ? 'bg-black/20 text-[#080B12]'
-                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                }`}
-              >
-                {item.badge}
-              </span>
-            )}
+            {item.icon}
+            <span>{item.label}</span>
           </button>
         ))}
+      </div>
 
-        <button
-          type="button"
-          onClick={logout}
-          className="w-full min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-3 text-red-400 hover:bg-red-500/10 transition-colors mt-2"
-        >
-          <LogOut className="w-4 h-4" />
-          <span>Logout</span>
-        </button>
-      </aside>
-
-      {/* Main Admin Content */}
-      <div className="flex-1 space-y-6">
-        {statusMsg && (
-          <div className="p-3 rounded-xl bg-[#16D98A]/15 border border-[#16D98A]/30 text-xs text-[#16D98A]">
-            {statusMsg}
-          </div>
-        )}
-
-        {activeTab === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <h1 className="font-display text-2xl font-extrabold text-white">
-                Dashboard Overview
-              </h1>
-              <button
-                type="button"
-                onClick={async () => {
-                  await seedDatabase();
-                  notify('Initial data seeded to Firestore.');
-                }}
-                className="min-h-[40px] px-4 py-2 rounded-xl bg-[#151E2B] border border-white/10 text-xs font-semibold text-[#00B7FF] hover:border-[#00B7FF] inline-flex items-center gap-2 self-start"
-              >
-                <Database className="w-4 h-4" />
-                Seed Initial Data
-              </button>
-            </div>
-
-            {/* Quick-Access White-Label App Bridge Banner */}
-            <div className="bg-gradient-to-r from-[#101722] via-[#102521] to-[#101722] rounded-2xl border border-[#16D98A]/35 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
-              <div className="space-y-1">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#16D98A]/20 text-[#16D98A] text-[10px] font-mono font-bold">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  অ্যাড-মুক্ত অ্যাপস ব্রিজ ও নিজস্ব ব্র্যান্ড
-                </span>
-                <h2 className="text-base font-bold text-white">
-                  আপনার অ্যাপস বা ওয়েবসাইট থেকে অ্যাড বাদ দিয়ে "{settings.siteName || 'KhelaDekH'}" নামে লাইভ চালান
-                </h2>
-                <p className="text-xs text-[#A5B1C2]">
-                  {customChannels.length > 0
-                    ? `বর্তমানে ${customChannels.length}টি অ্যাড-মুক্ত কাস্টম চ্যানেল আপনার নামে লাইভ চলছে।`
-                    : 'অনুমোদিত অ্যাপসের লিংক বা .APK/.M3U ফাইল দিয়ে সরাসরি বিজ্ঞাপনমুক্ত লাইভ স্ট্রিম যুক্ত করুন।'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab('sourceBridge')}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#16D98A] to-[#00B7FF] text-[#080B12] text-xs font-black shrink-0 hover:brightness-110 transition-all shadow-md"
-              >
-                অ্যাপস ব্রিজ ও ব্র্যান্ডিং খুলুন →
-              </button>
-            </div>
-
-            {/* Real-time Audience Telemetry Banner */}
-            <div className="bg-gradient-to-r from-[#151E2B] via-[#101b2b] to-[#151E2B] rounded-2xl border border-white/10 p-5 sm:p-6 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                  </span>
-                  <div>
-                    <h2 className="text-base font-bold text-white flex items-center gap-2">
-                      লাইভ দর্শক মনিটরিং (Live Concurrent Audience)
-                    </h2>
-                    <p className="text-xs text-[#A5B1C2]">
-                      রিয়েল-টাইমে কতজন ইউজার আপনার সাইটে খেলা দেখছেন তা সরাসরি পর্যবেক্ষণ করুন
-                    </p>
-                  </div>
-                </div>
-
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Desktop Grouped Sidebar */}
+        <aside className="hidden lg:block w-64 shrink-0 bg-[#0F1623] rounded-2xl border border-white/[0.08] p-4 space-y-5 sticky top-20">
+          {sidebarGroups.map((group) => (
+            <div key={group.title} className="space-y-1">
+              <p className="px-3 text-[10px] font-mono uppercase tracking-[0.14em] text-[#64748B] mb-1.5">
+                {group.title}
+              </p>
+              {group.items.map((item) => (
                 <button
+                  key={item.id}
                   type="button"
-                  onClick={() => setActiveTab('viewers')}
-                  className="px-3.5 py-1.5 rounded-xl bg-red-500/15 border border-red-500/30 text-xs font-semibold text-red-400 hover:bg-red-500/25 inline-flex items-center gap-2 transition-colors self-start sm:self-center"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full min-h-[38px] px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors ${
+                    activeTab === item.id
+                      ? 'bg-[#00B7FF] text-[#080B12]'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-white/[0.04]'
+                  }`}
                 >
-                  <Eye className="w-3.5 h-3.5" />
-                  বিস্তারিত লাইভ দর্শক মনিটর খুলুন
+                  <span className="flex items-center gap-2.5 min-w-0 truncate">
+                    {item.icon}
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  {item.badge && (
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold tabular-nums shrink-0 ${
+                        activeTab === item.id
+                          ? 'bg-black/20 text-[#080B12]'
+                          : item.badge === 'LIVE'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-white/[0.06] text-[#CBD5E1]'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
                 </button>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-white/5">
-                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
-                  <p className="text-[11px] text-[#A5B1C2]">বৰ্তমানে খেলা দেখছেন</p>
-                  <p className="font-display text-2xl font-black text-red-400 mt-1 tabular-nums flex items-baseline gap-1">
-                    {telemetry.totalMatchWatchers}
-                    <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
-                  </p>
-                </div>
-
-                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
-                  <p className="text-[11px] text-[#A5B1C2]">ওয়েবসাইটে মোট সক্রিয় ভিজিটর</p>
-                  <p className="font-display text-2xl font-black text-[#00B7FF] mt-1 tabular-nums flex items-baseline gap-1">
-                    {telemetry.totalVisitors}
-                    <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
-                  </p>
-                </div>
-
-                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
-                  <p className="text-[11px] text-[#A5B1C2]">স্মার্টফোন (Mobile)</p>
-                  <p className="font-display text-2xl font-black text-white mt-1 tabular-nums flex items-baseline gap-1">
-                    {telemetry.deviceStats.mobile}
-                    <span className="text-xs font-normal text-[#A5B1C2]">
-                      ({telemetry.totalVisitors > 0 ? Math.round((telemetry.deviceStats.mobile / telemetry.totalVisitors) * 100) : 0}%)
-                    </span>
-                  </p>
-                </div>
-
-                <div className="p-3 bg-[#080B12]/60 rounded-xl border border-white/5">
-                  <p className="text-[11px] text-[#A5B1C2]">কম্পিউটার (Desktop)</p>
-                  <p className="font-display text-2xl font-black text-white mt-1 tabular-nums flex items-baseline gap-1">
-                    {telemetry.deviceStats.desktop}
-                    <span className="text-xs font-normal text-[#A5B1C2]">
-                      ({telemetry.totalVisitors > 0 ? Math.round((telemetry.deviceStats.desktop / telemetry.totalVisitors) * 100) : 0}%)
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {telemetry.matchStats.length > 0 && (
-                <div className="pt-2 border-t border-white/5 space-y-2">
-                  <p className="text-xs font-semibold text-[#A5B1C2]">কোন খেলায় কতজন দেখছেন:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {telemetry.matchStats.map((st) => (
-                      <div
-                        key={st.eventId}
-                        className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs flex items-center gap-2"
-                      >
-                        <span className="font-bold text-white truncate max-w-[200px]">{st.eventTitle}</span>
-                        <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-mono font-bold text-[11px]">
-                          🔴 {st.count} জন
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {[
-                { label: 'Total Events', value: events.length },
-                {
-                  label: 'Live Events',
-                  value: events.filter((e) => e.status === 'LIVE').length,
-                },
-                {
-                  label: 'Upcoming Events',
-                  value: events.filter((e) => e.status === 'UPCOMING').length,
-                },
-                { label: 'Published News', value: news.length },
-                { label: 'Registered Users', value: usersList.length },
-                { label: 'Contact Messages', value: messagesList.length },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="bg-[#151E2B] rounded-2xl border border-white/10 p-5"
-                >
-                  <p className="text-xs text-[#A5B1C2]">{stat.label}</p>
-                  <p className="font-display text-2xl font-extrabold text-white mt-1 tabular-nums">
-                    {stat.value}
-                  </p>
-                </div>
               ))}
             </div>
+          ))}
 
-            {/* Daily Viewership Graph Paper Component */}
-            <DailyAudienceGraph
-              todayVisitors={telemetry.totalVisitors}
-              todayMatchWatchers={telemetry.totalMatchWatchers}
-            />
+          <div className="pt-3 border-t border-white/[0.08]">
+            <button
+              type="button"
+              onClick={logout}
+              className="w-full min-h-[38px] px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2.5 text-red-400 hover:bg-red-500/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Logout</span>
+            </button>
           </div>
-        )}
+        </aside>
 
-        {activeTab === 'sourceBridge' && (
-          <SourceBridgeTab
-            onNotify={notify}
-            onTestPlay={(url, title) => {
-              setTestStreamUrl(url);
-              setTestStreamTitle(title || 'Ad-Free Source Preview');
-            }}
-          />
-        )}
-
-        {/* Dedicated Live Viewers Real-time Telemetry Tab */}
-        {activeTab === 'viewers' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                  </span>
-                  <h1 className="font-display text-2xl font-extrabold text-white flex items-center gap-2">
-                    রিয়েল-টাইম লাইভ দর্শক মনিটর (Live Audience)
-                  </h1>
-                </div>
-                <p className="text-xs text-[#A5B1C2] mt-1">
-                  এই মুহূর্তে আপনার ওয়েবসাইটে কে কোন খেলাটি দেখছেন এবং ভিজিটরদের লাইভ উপস্থিতি ট্র্যাক করুন।
-                </p>
-              </div>
-
-              <div className="px-3 py-1.5 rounded-xl bg-[#16D98A]/10 border border-[#16D98A]/20 text-[#16D98A] text-xs font-semibold flex items-center gap-2 self-start">
-                <span className="w-2 h-2 rounded-full bg-[#16D98A] animate-pulse"></span>
-                <span>স্বয়ংক্রিয় লাইভ সিঙ্ক সক্রিয়</span>
-              </div>
-            </div>
-
-            {/* Top Telemetry KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-[#151E2B] rounded-2xl border border-red-500/20 p-5 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <Radio className="w-16 h-16 text-red-500" />
-                </div>
-                <p className="text-xs text-red-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                  খেলা দেখছেন (Watching Stream)
-                </p>
-                <p className="font-display text-3xl font-black text-white mt-2 tabular-nums">
-                  {telemetry.totalMatchWatchers}{' '}
-                  <span className="text-sm font-semibold text-[#A5B1C2]">জন</span>
-                </p>
-                <p className="text-[11px] text-[#A5B1C2] mt-1">
-                  ম্যাচ পেজে সক্রিয় দর্শক
-                </p>
-              </div>
-
-              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <Globe className="w-16 h-16 text-[#00B7FF]" />
-                </div>
-                <p className="text-xs text-[#00B7FF] font-bold uppercase tracking-wider">
-                  সাইটে মোট সক্রিয় ভিজিটর
-                </p>
-                <p className="font-display text-3xl font-black text-white mt-2 tabular-nums">
-                  {telemetry.totalVisitors}{' '}
-                  <span className="text-sm font-semibold text-[#A5B1C2]">জন</span>
-                </p>
-                <p className="text-[11px] text-[#A5B1C2] mt-1">
-                  ওয়েবসাইটের সব পেজ মিলিয়ে
-                </p>
-              </div>
-
-              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-[#A5B1C2] font-semibold flex items-center gap-1.5">
-                    <Smartphone className="w-4 h-4 text-emerald-400" />
-                    মোবাইল ইউজার
-                  </p>
-                  <span className="text-xs font-mono font-bold text-emerald-400">
-                    {telemetry.totalVisitors > 0
-                      ? Math.round((telemetry.deviceStats.mobile / telemetry.totalVisitors) * 100)
-                      : 0}
-                    %
-                  </span>
-                </div>
-                <p className="font-display text-2xl font-bold text-white mt-2 tabular-nums">
-                  {telemetry.deviceStats.mobile}{' '}
-                  <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
-                </p>
-                <div className="w-full bg-white/5 h-1.5 rounded-full mt-2 overflow-hidden">
-                  <div
-                    className="bg-emerald-400 h-full rounded-full transition-all"
-                    style={{
-                      width: `${
-                        telemetry.totalVisitors > 0
-                          ? (telemetry.deviceStats.mobile / telemetry.totalVisitors) * 100
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-[#A5B1C2] font-semibold flex items-center gap-1.5">
-                    <Monitor className="w-4 h-4 text-cyan-400" />
-                    ডেস্কটপ ইউজার
-                  </p>
-                  <span className="text-xs font-mono font-bold text-cyan-400">
-                    {telemetry.totalVisitors > 0
-                      ? Math.round((telemetry.deviceStats.desktop / telemetry.totalVisitors) * 100)
-                      : 0}
-                    %
-                  </span>
-                </div>
-                <p className="font-display text-2xl font-bold text-white mt-2 tabular-nums">
-                  {telemetry.deviceStats.desktop}{' '}
-                  <span className="text-xs font-normal text-[#A5B1C2]">জন</span>
-                </p>
-                <div className="w-full bg-white/5 h-1.5 rounded-full mt-2 overflow-hidden">
-                  <div
-                    className="bg-cyan-400 h-full rounded-full transition-all"
-                    style={{
-                      width: `${
-                        telemetry.totalVisitors > 0
-                          ? (telemetry.deviceStats.desktop / telemetry.totalVisitors) * 100
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Match-by-Match Breakdown */}
-            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-red-400" />
-                  ম্যাচভিত্তিক লাইভ দর্শক বন্টন (Audience per Match)
-                </h2>
-                <span className="text-xs text-[#A5B1C2]">
-                  {telemetry.matchStats.length} টি ম্যাচে দর্শক উপস্থিত
-                </span>
-              </div>
-
-              {telemetry.matchStats.length === 0 ? (
-                <div className="p-8 text-center bg-[#101722] rounded-xl border border-white/5 space-y-2">
-                  <p className="text-sm font-semibold text-white">
-                    এই মুহূর্তে কোনো দর্শক নির্দিষ্ট কোনো ম্যাচ পেজে নেই
-                  </p>
-                  <p className="text-xs text-[#A5B1C2]">
-                    ভিজিটররা হোমপেজ বা সূচি ব্রাউজ করছেন। ইউজাররা কোনো খেলার পেজে ঢুকলে তাৎক্ষণিকভাবে এখানে তাদের দর্শক সংখ্যা দেখা যাবে।
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {telemetry.matchStats.map((stat, idx) => {
-                    const matchEvent = events.find((e) => e.id === stat.eventId);
-                    const pct =
-                      telemetry.totalMatchWatchers > 0
-                        ? Math.round((stat.count / telemetry.totalMatchWatchers) * 100)
-                        : 100;
-
-                    return (
-                      <div
-                        key={stat.eventId}
-                        className="bg-[#101722] rounded-xl border border-white/5 p-4 space-y-3 hover:border-white/20 transition-colors"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 rounded-lg bg-white/5 text-xs font-mono font-bold text-[#A5B1C2] flex items-center justify-center">
-                              #{idx + 1}
-                            </span>
-                            <div>
-                              <p className="text-sm font-bold text-white flex items-center gap-2">
-                                {stat.eventTitle}
-                                {matchEvent?.status === 'LIVE' && (
-                                  <span className="px-2 py-0.5 rounded-full bg-[#16D98A]/20 text-[#16D98A] text-[10px] font-bold">
-                                    LIVE NOW
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-xs text-[#A5B1C2] capitalize">
-                                Sport: {stat.sportId} · Competition: {matchEvent?.competitionId || 'Tournament'}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 self-end sm:self-auto">
-                            <div className="text-right">
-                              <p className="text-sm font-black text-red-400 font-mono">
-                                🔴 {stat.count} জন
-                              </p>
-                              <p className="text-[10px] text-[#A5B1C2] font-mono">
-                                {pct}% দর্শক
-                              </p>
-                            </div>
-
-                            {matchEvent && (
-                              <Link
-                                to={`/events/${matchEvent.slug || matchEvent.id}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-[#00B7FF] transition-colors"
-                                title="খেলাটি নতুন ট্যাবে দেখুন"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </Link>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Audience Share Progress Bar */}
-                        <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
-                          <div
-                            className="bg-gradient-to-r from-red-500 to-amber-500 h-full rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Active Sessions Live Feed */}
-            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-[#00B7FF]" />
-                  সক্রিয় সেশনসমূহের লাইভ তালিকা (Active Live Sessions)
-                </h2>
-                <span className="text-xs font-mono text-[#A5B1C2]">
-                  মোট {telemetry.activeSessions.length} টি সক্রিয় সংযোগ
-                </span>
-              </div>
-
-              {telemetry.activeSessions.length === 0 ? (
-                <div className="p-6 text-center text-xs text-[#A5B1C2]">
-                  কোনো সক্রিয় সেশন নেই
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-white/10 text-[#A5B1C2]">
-                        <th className="py-3 px-3">ইউজার / সেশন</th>
-                        <th className="py-3 px-3">বর্তমান অবস্থান / ম্যাচ</th>
-                        <th className="py-3 px-3">ডিভাইস</th>
-                        <th className="py-3 px-3">ব্রাউজার</th>
-                        <th className="py-3 px-3">লাস্ট পিং (স্ট্যাটাস)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {telemetry.activeSessions.map((session) => {
-                        const secondsAgo = Math.max(0, Math.round((Date.now() - session.lastPing) / 1000));
-                        return (
-                          <tr key={session.id} className="hover:bg-white/[0.02]">
-                            <td className="py-3 px-3">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-[#16D98A] animate-ping" />
-                                <div>
-                                  <p className="font-semibold text-white">
-                                    {session.userName || 'Anonymous Fan'}
-                                  </p>
-                                  <p className="text-[10px] text-[#A5B1C2] font-mono truncate max-w-[120px]">
-                                    {session.id}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-3 px-3">
-                              {session.eventTitle ? (
-                                <div className="space-y-0.5">
-                                  <p className="font-bold text-red-400 flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
-                                    {session.eventTitle}
-                                  </p>
-                                  <p className="text-[10px] text-[#A5B1C2]">
-                                    {session.page}
-                                  </p>
-                                </div>
-                              ) : (
-                                <span className="text-[#A5B1C2] font-mono">
-                                  {session.page}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3">
-                              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-white capitalize font-mono text-[11px] inline-flex items-center gap-1">
-                                {session.device === 'mobile' ? (
-                                  <>
-                                    <Smartphone className="w-3 h-3 text-emerald-400" /> Mobile
-                                  </>
-                                ) : (
-                                  <>
-                                    <Monitor className="w-3 h-3 text-cyan-400" /> Desktop
-                                  </>
-                                )}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-[#A5B1C2]">
-                              {session.browser || 'Web'}
-                            </td>
-                            <td className="py-3 px-3">
-                              <span className="font-mono text-[#16D98A] text-[11px]">
-                                {secondsAgo < 5 ? 'এখনই সক্রিয়' : `${secondsAgo} সে. আগে`}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Daily Viewership Graph Paper Component */}
-            <DailyAudienceGraph
-              todayVisitors={telemetry.totalVisitors}
-              todayMatchWatchers={telemetry.totalMatchWatchers}
-            />
-          </div>
-        )}
-
-        {activeTab === 'automation' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="font-display text-2xl font-extrabold text-white flex items-center gap-2">
-                  <Zap className="w-6 h-6 text-[#00B7FF]" />
-                  Automation & AI Feeds Hub
-                </h1>
-                <p className="text-xs text-[#A5B1C2] mt-1">
-                  Manage continuous Google Search grounded sports feeds and automated match lifecycle.
-                </p>
-              </div>
-
-              {/* Force Sync Button */}
+        {/* Main Content Panel */}
+        <div className="flex-1 w-full min-w-0 space-y-6">
+          {statusMsg && (
+            <div className="px-4 py-3 rounded-xl bg-[#16D98A]/10 border border-[#16D98A]/30 text-xs font-medium text-[#16D98A] flex items-center justify-between gap-2">
+              <span>{statusMsg}</span>
               <button
                 type="button"
-                disabled={autoSyncing}
-                onClick={async () => {
-                  notify('Fetching live sports via Google Search Grounding...');
-                  await syncLiveSportsFromGoogle(false);
-                  notify('Sports feed synchronized successfully!');
-                }}
-                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] disabled:opacity-50 text-[#080B12] text-xs font-bold inline-flex items-center gap-2 transition-all shadow-lg shadow-[#00B7FF]/20 self-start sm:self-auto"
+                onClick={() => setStatusMsg('')}
+                className="text-[#16D98A] hover:text-white"
               >
-                <RefreshCw className={`w-4 h-4 ${autoSyncing ? 'animate-spin' : ''}`} />
-                <span>{autoSyncing ? 'Syncing Feeds...' : 'Run Google Search Sync Now'}</span>
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
+          )}
 
-            {/* Automation Status Dashboard Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
-                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
-                  <span>AI Grounding Engine</span>
-                  <span className="w-2 h-2 rounded-full bg-[#16D98A] animate-pulse" />
-                </div>
-                <p className="font-display text-lg font-bold text-white">Google Search</p>
-                <p className="text-[11px] text-[#16D98A] font-mono">Gemini 2.5 Flash Grounded</p>
-              </div>
-
-              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
-                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
-                  <span>Auto-Sync Cadence</span>
-                  <Clock className="w-3.5 h-3.5 text-[#00B7FF]" />
-                </div>
-                <p className="font-display text-lg font-bold text-white">Every 3 Minutes</p>
-                <p className="text-[11px] text-[#A5B1C2] font-mono">
-                  {lastAutoSyncTime ? `Last: ${lastAutoSyncTime}` : 'Continuous background sync'}
-                </p>
-              </div>
-
-              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
-                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
-                  <span>Catalog Status</span>
-                  <Globe className="w-3.5 h-3.5 text-[#16D98A]" />
-                </div>
-                <p className="font-display text-lg font-bold text-white tabular-nums">
-                  {events.length} Matches
-                </p>
-                <p className="text-[11px] text-[#A5B1C2] font-mono">
-                  {events.filter((e) => e.status === 'LIVE').length} Live Broadcasting
-                </p>
-              </div>
-
-              <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-5 space-y-2">
-                <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
-                  <span>Multi-Sport Coverage</span>
-                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                </div>
-                <p className="font-display text-lg font-bold text-white">4 Major Sports</p>
-                <p className="text-[11px] text-[#A5B1C2] font-mono">Cricket, Football, Tennis, NBA</p>
-              </div>
-            </div>
-
-            {/* Quick Automation Actions Bar */}
-            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
-              <h2 className="text-sm font-bold text-white">One-Click Automation Tasks</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={handleAutoUpdateMatchStatuses}
-                  className="p-4 rounded-xl bg-[#101722] hover:bg-[#1A2332] border border-white/10 hover:border-[#00B7FF] text-left transition-all group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-white group-hover:text-[#00B7FF]">
-                      Auto-Update Match Statuses
-                    </span>
-                    <Clock className="w-4 h-4 text-[#00B7FF]" />
-                  </div>
-                  <p className="text-[11px] text-[#A5B1C2]">
-                    Detects match start times and automatically transitions upcoming fixtures to LIVE or FINISHED.
+          {/* 1. DASHBOARD OVERVIEW */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-2xl font-extrabold text-white">
+                    Broadcast Overview
+                  </h1>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">
+                    Real-time match telemetry, TV broadcasts, and Ad Manager controls.
                   </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handlePublishAllEvents}
-                  className="p-4 rounded-xl bg-[#101722] hover:bg-[#1A2332] border border-white/10 hover:border-[#16D98A] text-left transition-all group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-white group-hover:text-[#16D98A]">
-                      Publish All Discovered Events
-                    </span>
-                    <CheckCircle2 className="w-4 h-4 text-[#16D98A]" />
-                  </div>
-                  <p className="text-[11px] text-[#A5B1C2]">
-                    Immediately makes all newly synced Google sports matches live and visible to all fans.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await seedDatabase();
-                    notify('Master multi-sport verified catalog restored.');
-                  }}
-                  className="p-4 rounded-xl bg-[#101722] hover:bg-[#1A2332] border border-white/10 hover:border-amber-400 text-left transition-all group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-white group-hover:text-amber-400">
-                      Seed Default Verified Catalog
-                    </span>
-                    <Database className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <p className="text-[11px] text-[#A5B1C2]">
-                    Restores verified multi-resolution streams, teams, categories, and international competitions.
-                  </p>
-                </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ads')}
+                    className="min-h-[38px] px-4 py-2 rounded-xl bg-[#141D2E] border border-white/[0.08] hover:border-amber-400/40 text-xs font-semibold text-amber-300 inline-flex items-center gap-2"
+                  >
+                    <Megaphone className="w-4 h-4" />
+                    <span>Ad Manager</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await seedDatabase();
+                      notify('Initial catalog synced to Firestore.');
+                    }}
+                    className="min-h-[38px] px-4 py-2 rounded-xl bg-[#141D2E] border border-white/[0.08] hover:border-[#00B7FF]/40 text-xs font-semibold text-[#00B7FF] inline-flex items-center gap-2"
+                  >
+                    <Database className="w-4 h-4" />
+                    <span>Seed Catalog</span>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Active Automated Disciplines Overview */}
-            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
-              <h2 className="text-sm font-bold text-white">Active Automated Sports Feeds</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* KPI Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { id: 'cricket', name: 'Cricket', count: events.filter(e => e.sportId === 'cricket').length, live: events.filter(e => e.sportId === 'cricket' && e.status === 'LIVE').length, icon: '🏏' },
-                  { id: 'football', name: 'Football', count: events.filter(e => e.sportId === 'football').length, live: events.filter(e => e.sportId === 'football' && e.status === 'LIVE').length, icon: '⚽' },
-                  { id: 'basketball', name: 'Basketball', count: events.filter(e => e.sportId === 'basketball').length, live: events.filter(e => e.sportId === 'basketball' && e.status === 'LIVE').length, icon: '🏀' },
-                  { id: 'tennis', name: 'Tennis', count: events.filter(e => e.sportId === 'tennis').length, live: events.filter(e => e.sportId === 'tennis' && e.status === 'LIVE').length, icon: '🎾' },
-                ].map(sportFeed => (
-                  <div key={sportFeed.id} className="bg-[#101722] rounded-xl p-4 border border-white/10 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{sportFeed.icon}</span>
-                        <span className="text-xs font-bold text-white">{sportFeed.name}</span>
-                      </div>
-                      <p className="text-[11px] text-[#A5B1C2] mt-1 font-mono">
-                        {sportFeed.count} total · <span className="text-[#16D98A] font-bold">{sportFeed.live} Live</span>
-                      </p>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#16D98A]/20 text-[#16D98A]">
-                      AUTO
-                    </span>
+                  {
+                    label: 'Watching Live Now',
+                    value: telemetry.totalMatchWatchers,
+                    sub: `${telemetry.totalVisitors} total online`,
+                    accent: 'text-red-400',
+                  },
+                  {
+                    label: 'Live Matches',
+                    value: events.filter((e) => e.status === 'LIVE').length,
+                    sub: `${events.length} total fixtures`,
+                    accent: 'text-[#16D98A]',
+                  },
+                  {
+                    label: 'Custom TV Channels',
+                    value: customChannels.length,
+                    sub: `${brandName} Branded`,
+                    accent: 'text-[#00B7FF]',
+                  },
+                  {
+                    label: 'Registered Users',
+                    value: usersList.length,
+                    sub: adsCurrentlyLive ? 'Ads Active' : 'Ad-Free Mode',
+                    accent: adsCurrentlyLive ? 'text-amber-300' : 'text-white',
+                  },
+                ].map((kpi) => (
+                  <div
+                    key={kpi.label}
+                    className="rounded-2xl bg-[#141D2E] border border-white/[0.08] p-5"
+                  >
+                    <p className="text-xs text-[#94A3B8]">{kpi.label}</p>
+                    <p
+                      className={`font-display text-3xl font-black mt-1.5 tabular-nums ${kpi.accent}`}
+                    >
+                      {kpi.value}
+                    </p>
+                    <p className="text-[11px] text-[#64748B] font-mono mt-1">{kpi.sub}</p>
                   </div>
                 ))}
               </div>
-            </div>
 
-            {/* Automated Live Stream Discovery Engine & 5-Server Hub */}
-            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="p-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20">
-                    <Radio className="w-5 h-5 animate-pulse" />
-                  </span>
-                  <div>
-                    <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                      ইউটিউব ও ফেসবুকে লাইভ খেলা স্ক্যানার এবং ৫-সার্ভার ডিস্ট্রিবিউশন
-                    </h2>
-                    <p className="text-xs text-[#A5B1C2]">
-                      স্বয়ংক্রিয়ভাবে ইউটিউব ও ফেসবুক থেকে লাইভ স্ট্রিম খুঁজে ৫টি কোয়ালিটি সার্ভারে (১০৮০p, ৭২০p, ৪৮০p, মিরর, ব্যাকআপ) ভাগ করে ম্যাচে বসিয়ে দিন
+              {/* Quick Action Tiles */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-5 flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-mono uppercase tracking-wider text-amber-300">
+                      Monetization & Sponsors
                     </p>
+                    <h2 className="text-base font-bold text-white">
+                      {adsCurrentlyLive
+                        ? 'আপনার সাইটে অ্যাডস বর্তমানে চালু আছে'
+                        : 'এখন অ্যাড-মুক্ত মোডে চলছে — চাইলে অ্যাড চালু করুন'}
+                    </h2>
+                    <p className="text-xs text-[#94A3B8]">
+                      স্মার্টলিংক, ব্যানার, নেটিভ কার্ড এবং ম্যাচ শুরুর প্রি-রোল পপ-আপ এখান থেকে নিয়ন্ত্রণ করুন।
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ads')}
+                    className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-[#080B12] text-xs font-bold shrink-0 transition-colors"
+                  >
+                    Ad Manager
+                  </button>
+                </div>
+
+                <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-5 flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-mono uppercase tracking-wider text-[#16D98A]">
+                      White-Label TV Bridge
+                    </p>
+                    <h2 className="text-base font-bold text-white">
+                      নিজস্ব ব্র্যান্ড ও স্পোর্টস চ্যানেল পরিচালনা
+                    </h2>
+                    <p className="text-xs text-[#94A3B8]">
+                      নতুন M3U/লিংক/অ্যাপস সোর্স থেকে লাইভ চ্যানেল এনে {brandName} নামে যুক্ত করুন।
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('sourceBridge')}
+                    className="px-4 py-2.5 rounded-xl bg-[#16D98A] hover:bg-[#1FE896] text-[#080B12] text-xs font-bold shrink-0 transition-colors"
+                  >
+                    Open Bridge
+                  </button>
+                </div>
+              </div>
+
+              <DailyAudienceGraph
+                todayVisitors={telemetry.totalVisitors}
+                todayMatchWatchers={telemetry.totalMatchWatchers}
+              />
+            </div>
+          )}
+
+          {/* 2. AD MANAGER TAB */}
+          {activeTab === 'ads' && (
+            <form onSubmit={handleSaveAdsConfig} className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-2xl font-extrabold text-white">
+                    Ad Manager (অ্যাড কন্ট্রোল প্যানেল)
+                  </h1>
+                  <p className="text-xs text-[#94A3B8] mt-1">
+                    আপনার আগের Smartlink বা ডিরেক্ট অ্যাড লিংক এখানে বসান — ১-ক্লিকে সব অ্যাড চালু বা বন্ধ করতে পারবেন।
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetAdCooldown();
+                      setPreviewPreRollOpen(true);
+                      notify('12h cooldown reset — Live Pre-Roll preview opened.');
+                    }}
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#141D2E] border border-white/[0.08] hover:border-[#00B7FF]/40 text-xs font-semibold text-[#00B7FF] inline-flex items-center gap-2"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset Cooldown & Preview Modal</span>
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingAds}
+                    className="min-h-[40px] px-5 py-2 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{savingAds ? 'Saving...' : 'Save Ad Settings'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Master Ad Switch */}
+              <div className="rounded-2xl bg-[#141D2E] border border-white/[0.08] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="w-4 h-4 text-amber-300" />
+                    <h2 className="text-sm font-bold text-white">
+                      Master Ads Status (ওয়েবসাইটের সব অ্যাড চালু / বন্ধ)
+                    </h2>
+                  </div>
+                  <p className="text-xs text-[#94A3B8]">
+                    চালু করলে Home, Live TV এবং Match পেজে আপনার কনফিগার করা Smartlink/Banner/Native/Pre-Roll অ্যাড দেখাবে।
+                  </p>
+                </div>
+
+                <div className="inline-flex rounded-xl bg-[#080B12] p-1 border border-white/[0.08] shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setAdForm((prev) => ({ ...prev, adsEnabled: false }))}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+                      !adForm.adsEnabled
+                        ? 'bg-[#16D98A] text-[#080B12]'
+                        : 'text-[#94A3B8] hover:text-white'
+                    }`}
+                  >
+                    Ad-Free (OFF)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdForm((prev) => ({ ...prev, adsEnabled: true }))}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+                      adForm.adsEnabled
+                        ? 'bg-amber-400 text-[#080B12]'
+                        : 'text-[#94A3B8] hover:text-white'
+                    }`}
+                  >
+                    Ads Active (ON)
+                  </button>
+                </div>
+              </div>
+
+              {/* Smartlink / Direct Ad URL */}
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                <div>
+                  <h2 className="text-sm font-bold text-white">
+                    ১. Smartlink / Direct Ad URL (আপনার আগের অ্যাড লিংক এখানে দিন)
+                  </h2>
+                  <p className="text-xs text-[#94A3B8] mt-1">
+                    আপনার Adsterra বা যেকোনো পার্টনারের Direct / Smartlink URL এখানে পেস্ট করুন। ব্যানার ও পপ-আপ বাটনে ক্লিক করলে ভিজিটর এই লিংকে যাবে।
+                  </p>
+                </div>
+                <input
+                  type="url"
+                  value={adForm.smartlinkUrl}
+                  onChange={(e) => setAdForm((prev) => ({ ...prev, smartlinkUrl: e.target.value }))}
+                  placeholder="https://your-smartlink-domain.com/..."
+                  className="w-full h-11 px-3.5 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white font-mono focus:border-[#00B7FF] outline-none"
+                />
+              </div>
+
+              {/* Banner & Native Slot Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Banner Ad */}
+                <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-bold text-white">২. Banner Strip Ad</h2>
+                      <p className="text-xs text-[#94A3B8]">প্লেয়ার ও হোমপেজের নিচে দেখাবে</p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={adForm.bannerEnabled}
+                        onChange={(e) =>
+                          setAdForm((prev) => ({ ...prev, bannerEnabled: e.target.checked }))
+                        }
+                        className="w-4 h-4 accent-[#00B7FF]"
+                      />
+                      <span>Enabled</span>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={adForm.bannerTitle || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, bannerTitle: e.target.value }))
+                      }
+                      placeholder="Banner Title"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                    />
+                    <input
+                      type="text"
+                      value={adForm.bannerSubtitle || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, bannerSubtitle: e.target.value }))
+                      }
+                      placeholder="Subtitle / Sponsor"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                    />
+                    <input
+                      type="url"
+                      value={adForm.bannerImageUrl || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, bannerImageUrl: e.target.value }))
+                      }
+                      placeholder="Banner Image URL (optional)"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white font-mono"
+                    />
+                    <input
+                      type="text"
+                      value={adForm.bannerCta || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, bannerCta: e.target.value }))
+                      }
+                      placeholder="CTA Button Text"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                    />
+                  </div>
+
+                  <div className="pt-2 space-y-1.5">
+                    <p className="text-[10px] font-mono uppercase tracking-wider text-[#64748B]">
+                      Live Banner Preview
+                    </p>
+                    <AdsterraBanner320x50 previewOverride={adForm} />
                   </div>
                 </div>
 
-                <span className="px-3 py-1 rounded-full bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-mono font-bold self-start sm:self-auto">
-                  ৫-সার্ভার আর্কিটেকচার
+                {/* Native Promo Card */}
+                <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-bold text-white">৩. Native Promo Card</h2>
+                      <p className="text-xs text-[#94A3B8]">ম্যাচ ও টিভি চ্যানেল গ্রিডের মাঝে দেখাবে</p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={adForm.nativeEnabled}
+                        onChange={(e) =>
+                          setAdForm((prev) => ({ ...prev, nativeEnabled: e.target.checked }))
+                        }
+                        className="w-4 h-4 accent-[#00B7FF]"
+                      />
+                      <span>Enabled</span>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={adForm.nativeTitle || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, nativeTitle: e.target.value }))
+                      }
+                      placeholder="Promo Title"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                    />
+                    <input
+                      type="text"
+                      value={adForm.nativeCta || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, nativeCta: e.target.value }))
+                      }
+                      placeholder="CTA Text"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                    />
+                    <input
+                      type="url"
+                      value={adForm.nativeTargetUrl || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, nativeTargetUrl: e.target.value }))
+                      }
+                      placeholder="Custom Target URL (falls back to Smartlink)"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white font-mono"
+                    />
+                    <input
+                      type="url"
+                      value={adForm.nativeImageUrl || ''}
+                      onChange={(e) =>
+                        setAdForm((prev) => ({ ...prev, nativeImageUrl: e.target.value }))
+                      }
+                      placeholder="Image URL (optional)"
+                      className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white font-mono"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={adForm.nativeDescription || ''}
+                    onChange={(e) =>
+                      setAdForm((prev) => ({ ...prev, nativeDescription: e.target.value }))
+                    }
+                    placeholder="Short promo description"
+                    className="w-full h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                  />
+
+                  <div className="pt-2 space-y-1.5">
+                    <p className="text-[10px] font-mono uppercase tracking-wider text-[#64748B]">
+                      Live Native Preview
+                    </p>
+                    <AdsterraNativeBanner previewOverride={adForm} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pre-Roll Match Interstitial Modal Settings */}
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-white">
+                      ৪. Pre-Roll Match Interstitial Modal (খেলা শুরুর আগে পপ-আপ অ্যাড)
+                    </h2>
+                    <p className="text-xs text-[#94A3B8]">
+                      ম্যাচ পেজে ঢোকার সময় কুলডাউন অনুযায়ী একবার এই মডালটি দেখাবে।
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={preRollForm.enabled}
+                      onChange={(e) =>
+                        setPreRollForm((prev) => ({ ...prev, enabled: e.target.checked }))
+                      }
+                      className="w-4 h-4 accent-[#00B7FF]"
+                    />
+                    <span>Pre-Roll Active</span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-[#94A3B8] mb-1">
+                      Countdown (Seconds)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={30}
+                      value={preRollForm.durationSeconds}
+                      onChange={(e) =>
+                        setPreRollForm((prev) => ({
+                          ...prev,
+                          durationSeconds: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#94A3B8] mb-1">
+                      Frequency Cooldown (Hours)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={72}
+                      value={preRollForm.frequencyHours}
+                      onChange={(e) =>
+                        setPreRollForm((prev) => ({
+                          ...prev,
+                          frequencyHours: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#94A3B8] mb-1">Badge Label</label>
+                    <input
+                      type="text"
+                      value={preRollForm.badgeText}
+                      onChange={(e) =>
+                        setPreRollForm((prev) => ({ ...prev, badgeText: e.target.value }))
+                      }
+                      className="w-full h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#94A3B8] mb-1">Button CTA</label>
+                    <input
+                      type="text"
+                      value={preRollForm.ctaText}
+                      onChange={(e) =>
+                        setPreRollForm((prev) => ({ ...prev, ctaText: e.target.value }))
+                      }
+                      className="w-full h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={preRollForm.title}
+                    onChange={(e) =>
+                      setPreRollForm((prev) => ({ ...prev, title: e.target.value }))
+                    }
+                    placeholder="Pre-Roll Headline"
+                    className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                  />
+                  <input
+                    type="url"
+                    value={preRollForm.targetUrl}
+                    onChange={(e) =>
+                      setPreRollForm((prev) => ({ ...prev, targetUrl: e.target.value }))
+                    }
+                    placeholder="Pre-Roll Target URL (falls back to Smartlink)"
+                    className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white font-mono"
+                  />
+                  <input
+                    type="url"
+                    value={preRollForm.imageUrl || ''}
+                    onChange={(e) =>
+                      setPreRollForm((prev) => ({ ...prev, imageUrl: e.target.value }))
+                    }
+                    placeholder="Banner/Poster Image URL (optional)"
+                    className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white font-mono"
+                  />
+                  <input
+                    type="text"
+                    value={preRollForm.description}
+                    onChange={(e) =>
+                      setPreRollForm((prev) => ({ ...prev, description: e.target.value }))
+                    }
+                    placeholder="Sponsor description"
+                    className="h-10 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs text-white"
+                  />
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* 3. SOURCE BRIDGE */}
+          {activeTab === 'sourceBridge' && (
+            <SourceBridgeTab
+              onNotify={notify}
+              onTestPlay={(url, title) => {
+                setTestStreamUrl(url);
+                setTestStreamTitle(title || 'Live Source Preview');
+              }}
+            />
+          )}
+
+          {/* 4. LIVE VIEWERS TELEMETRY */}
+          {activeTab === 'viewers' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-2xl font-extrabold text-white">
+                    Live Audience Monitor
+                  </h1>
+                  <p className="text-xs text-[#94A3B8] mt-1">
+                    এই মুহূর্তে কোন খেলায় কতজন দর্শক লাইভ দেখছেন তার রিয়েল-টাইম হিসাব।
+                  </p>
+                </div>
+                <span className="px-3 py-1.5 rounded-xl bg-[#16D98A]/10 border border-[#16D98A]/25 text-[#16D98A] text-xs font-mono font-semibold self-start">
+                  Realtime Sync Active
                 </span>
               </div>
 
-              {/* Discovery Controls */}
-              <div className="bg-[#101722] rounded-xl border border-white/5 p-4 space-y-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="rounded-2xl bg-[#141D2E] border border-white/[0.08] p-5">
+                  <p className="text-xs text-red-400 font-semibold">Watching Live Match</p>
+                  <p className="font-display text-3xl font-black text-white mt-2 tabular-nums">
+                    {telemetry.totalMatchWatchers}
+                  </p>
+                  <p className="text-[11px] text-[#64748B] mt-1">Active stream viewers</p>
+                </div>
+
+                <div className="rounded-2xl bg-[#141D2E] border border-white/[0.08] p-5">
+                  <p className="text-xs text-[#00B7FF] font-semibold">Total Online Visitors</p>
+                  <p className="font-display text-3xl font-black text-white mt-2 tabular-nums">
+                    {telemetry.totalVisitors}
+                  </p>
+                  <p className="text-[11px] text-[#64748B] mt-1">Across all pages</p>
+                </div>
+
+                <div className="rounded-2xl bg-[#141D2E] border border-white/[0.08] p-5">
+                  <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                      Mobile
+                    </span>
+                    <span className="font-mono text-emerald-400 tabular-nums">
+                      {telemetry.totalVisitors > 0
+                        ? Math.round((telemetry.deviceStats.mobile / telemetry.totalVisitors) * 100)
+                        : 0}
+                      %
+                    </span>
+                  </div>
+                  <p className="font-display text-2xl font-bold text-white mt-2 tabular-nums">
+                    {telemetry.deviceStats.mobile}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-[#141D2E] border border-white/[0.08] p-5">
+                  <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Monitor className="w-3.5 h-3.5 text-[#00B7FF]" />
+                      Desktop
+                    </span>
+                    <span className="font-mono text-[#00B7FF] tabular-nums">
+                      {telemetry.totalVisitors > 0
+                        ? Math.round((telemetry.deviceStats.desktop / telemetry.totalVisitors) * 100)
+                        : 0}
+                      %
+                    </span>
+                  </div>
+                  <p className="font-display text-2xl font-bold text-white mt-2 tabular-nums">
+                    {telemetry.deviceStats.desktop}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-base font-bold text-white flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-red-400" />
+                    Audience per Match
+                  </h2>
+                  <span className="text-xs font-mono text-[#64748B] tabular-nums">
+                    {telemetry.matchStats.length} active matches
+                  </span>
+                </div>
+
+                {telemetry.matchStats.length === 0 ? (
+                  <p className="text-xs text-[#94A3B8] py-4">
+                    এই মুহূর্তে কোনো ম্যাচ পেজে সক্রিয় দর্শক নেই।
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {telemetry.matchStats.map((stat, idx) => {
+                      const matchEvent = events.find((e) => e.id === stat.eventId);
+                      const pct =
+                        telemetry.totalMatchWatchers > 0
+                          ? Math.round((stat.count / telemetry.totalMatchWatchers) * 100)
+                          : 100;
+
+                      return (
+                        <div
+                          key={stat.eventId}
+                          className="rounded-xl bg-[#141D2E] border border-white/[0.08] p-4 space-y-2.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-xs font-mono text-[#64748B] tabular-nums">
+                                #{idx + 1}
+                              </span>
+                              <p className="text-sm font-bold text-white truncate">
+                                {stat.eventTitle}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-xs font-mono font-bold text-red-400 tabular-nums">
+                                {stat.count} watching ({pct}%)
+                              </span>
+                              {matchEvent && (
+                                <Link
+                                  to={`/events/${matchEvent.slug || matchEvent.id}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[#00B7FF] hover:text-white"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                          <div className="w-full bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-[#00B7FF] h-full rounded-full"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-base font-bold text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-[#00B7FF]" />
+                    Active Live Sessions ({telemetry.activeSessions.length})
+                  </h2>
+                </div>
+                {telemetry.activeSessions.length === 0 ? (
+                  <p className="text-xs text-[#94A3B8]">কোনো সক্রিয় সেশন নেই</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-white/[0.08] text-[#94A3B8]">
+                          <th className="py-2.5 px-3">User / Session</th>
+                          <th className="py-2.5 px-3">Page / Match</th>
+                          <th className="py-2.5 px-3">Device</th>
+                          <th className="py-2.5 px-3">Last Ping</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.06]">
+                        {telemetry.activeSessions.map((session) => {
+                          const secondsAgo = Math.max(
+                            0,
+                            Math.round((Date.now() - session.lastPing) / 1000)
+                          );
+                          return (
+                            <tr key={session.id}>
+                              <td className="py-2.5 px-3 text-white font-medium">
+                                {session.userName || 'Guest'}
+                              </td>
+                              <td className="py-2.5 px-3 text-[#94A3B8] font-mono">
+                                {session.eventTitle || session.page}
+                              </td>
+                              <td className="py-2.5 px-3 text-[#CBD5E1] capitalize">
+                                {session.device}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[#16D98A] tabular-nums">
+                                {secondsAgo < 5 ? 'Live' : `${secondsAgo}s ago`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <DailyAudienceGraph
+                todayVisitors={telemetry.totalVisitors}
+                todayMatchWatchers={telemetry.totalMatchWatchers}
+              />
+            </div>
+          )}
+
+          {/* 5. AUTOMATION & AUTO TV */}
+          {activeTab === 'automation' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-2xl font-extrabold text-white">
+                    Auto TV & Live Sports Feeds
+                  </h1>
+                  <p className="text-xs text-[#94A3B8] mt-1">
+                    প্রতিটি খেলার জন্য সেই খেলাটি সম্প্রচারকারী টিভি চ্যানেল অটো-ম্যাচ করে লাইভ স্ট্রিম চালু রাখে।
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={autoSyncing}
+                  onClick={async () => {
+                    notify('Syncing live sports schedule...');
+                    await syncLiveSportsFromGoogle(false);
+                    notify('Sports feed synchronized.');
+                  }}
+                  className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] disabled:opacity-50 text-[#080B12] text-xs font-bold inline-flex items-center gap-2 self-start sm:self-auto"
+                >
+                  <RefreshCw className={`w-4 h-4 ${autoSyncing ? 'animate-spin' : ''}`} />
+                  <span>{autoSyncing ? 'Syncing...' : 'Sync Sports & TV Channels'}</span>
+                </button>
+              </div>
+
+              {/* Sport -> Broadcaster TV Mapping */}
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Tv className="w-4 h-4 text-[#16D98A]" />
+                    <span>Sport-Matched Live TV Broadcasters (স্বয়ংক্রিয় টিভি চ্যানেল ম্যাপিং)</span>
+                  </h2>
+                  <span className="text-[11px] font-mono text-[#64748B]">
+                    {lastAutoSyncTime ? `Last Sync: ${lastAutoSyncTime}` : 'Every 3 min auto'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {SPORT_TV_MAPPINGS.map((row) => (
+                    <div
+                      key={row.sport}
+                      className="rounded-xl bg-[#141D2E] border border-white/[0.08] p-4 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-white">{row.sport}</span>
+                        <span className="px-2 py-0.5 rounded bg-[#00B7FF]/15 text-[#00B7FF] text-[10px] font-mono font-bold">
+                          {row.badge}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.channels.map((ch) => (
+                          <span
+                            key={ch}
+                            className="px-2.5 py-1 rounded-lg bg-[#080B12] border border-white/[0.08] text-[11px] text-[#CBD5E1]"
+                          >
+                            {ch}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick Automation Tasks */}
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                <h2 className="text-sm font-bold text-white">One-Click Automation Tasks</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={handleAutoUpdateMatchStatuses}
+                    className="p-4 rounded-xl bg-[#141D2E] hover:bg-white/[0.06] border border-white/[0.08] text-left transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-white">Auto-Update Statuses</span>
+                      <Clock className="w-4 h-4 text-[#00B7FF]" />
+                    </div>
+                    <p className="text-[11px] text-[#94A3B8]">
+                      সময় অনুযায়ী আসন্ন ম্যাচগুলোকে LIVE বা FINISHED হিসেবে আপডেট করে।
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePublishAllEvents}
+                    className="p-4 rounded-xl bg-[#141D2E] hover:bg-white/[0.06] border border-white/[0.08] text-left transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-white">Publish All Matches</span>
+                      <CheckCircle2 className="w-4 h-4 text-[#16D98A]" />
+                    </div>
+                    <p className="text-[11px] text-[#94A3B8]">
+                      সিঙ্ক হওয়া সকল ম্যাচ সাথে সাথে ভিজিটরদের জন্য পাবলিশ করে।
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await seedDatabase();
+                      notify('Master verified catalog restored.');
+                    }}
+                    className="p-4 rounded-xl bg-[#141D2E] hover:bg-white/[0.06] border border-white/[0.08] text-left transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-white">Seed Default Catalog</span>
+                      <Database className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <p className="text-[11px] text-[#94A3B8]">
+                      ডিফল্ট স্পোর্টস, ক্যাটাগরি এবং টুর্নামেন্ট পুনরুদ্ধার করে।
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Automated 5-Server Live TV Discovery Hub */}
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-display text-lg font-bold text-white">
+                      ম্যাচ অনুযায়ী লাইভ টিভি ও ৫-সার্ভার অটো-স্ক্যানার
+                    </h2>
+                    <p className="text-xs text-[#94A3B8] mt-0.5">
+                      যেকোনো ম্যাচ সিলেক্ট করে তার সম্প্রচারকারী লাইভ টিভি চ্যানেলগুলোতে ৫টি সার্ভার সেট করুন।
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-lg bg-[#00B7FF]/15 text-[#00B7FF] text-xs font-mono font-bold self-start">
+                    5-Server Auto-Failover
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-white mb-1.5">
-                      ১. ওয়েবসাইটের ম্যাচ নির্বাচন করুন:
+                      ১. ম্যাচ নির্বাচন করুন
                     </label>
                     <select
                       value={streamMatchId}
@@ -1253,12 +1692,12 @@ export const AdminPage: React.FC = () => {
                         const match = events.find((ev) => ev.id === e.target.value);
                         if (match) setCustomMatchTitle(`${match.title} live match`);
                       }}
-                      className="w-full bg-[#151E2B] border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#00B7FF]"
+                      className="w-full h-11 bg-[#080B12] border border-white/10 rounded-xl px-3 text-xs text-white focus:border-[#00B7FF] outline-none"
                     >
                       <option value="">-- যেকোনো ম্যাচ বেছে নিন --</option>
                       {events.map((ev) => (
                         <option key={ev.id} value={ev.id}>
-                          {ev.status === 'LIVE' ? '🔴 LIVE: ' : ''}{ev.title} ({ev.sportId})
+                          {ev.status === 'LIVE' ? 'LIVE: ' : ''}{ev.title} ({ev.sportId})
                         </option>
                       ))}
                     </select>
@@ -1266,24 +1705,24 @@ export const AdminPage: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-white mb-1.5">
-                      ২. সার্চ কীওয়ার্ড (যেমন: বাংলাদেশ বনাম ওয়েস্ট ইন্ডিজ):
+                      ২. ম্যাচ / চ্যানেল কীওয়ার্ড
                     </label>
                     <input
                       type="text"
                       value={customMatchTitle}
                       onChange={(e) => setCustomMatchTitle(e.target.value)}
-                      placeholder="Bangladesh vs West Indies live stream..."
-                      className="w-full bg-[#151E2B] border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#00B7FF]"
+                      placeholder="Bangladesh vs West Indies live match"
+                      className="w-full h-11 bg-[#080B12] border border-white/10 rounded-xl px-3 text-xs text-white focus:border-[#00B7FF] outline-none"
                     />
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     disabled={discoveringStreams}
                     onClick={handleDiscoverStreams}
-                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-bold inline-flex items-center gap-2 transition-all shadow-lg shadow-red-500/20 active:scale-95 disabled:opacity-50"
+                    className="min-h-[42px] px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-[#080B12] text-xs font-bold inline-flex items-center gap-2 disabled:opacity-50"
                   >
                     {discoveringStreams ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1292,8 +1731,8 @@ export const AdminPage: React.FC = () => {
                     )}
                     <span>
                       {discoveringStreams
-                        ? 'ইউটিউব ও ফেসবুকে সার্চ হচ্ছে...'
-                        : 'ইউটিউব ও ফেসবুকে লাইভ খুঁজুন এবং ৫টি সার্ভার তৈরি করুন'}
+                        ? 'টিভি ফিড খোঁজা হচ্ছে...'
+                        : 'লাইভ টিভি খুঁজুন ও ৫টি সার্ভার তৈরি করুন'}
                     </span>
                   </button>
 
@@ -1301,65 +1740,49 @@ export const AdminPage: React.FC = () => {
                     type="button"
                     disabled={discoveringStreams}
                     onClick={handleAutoPilotAllMatches}
-                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#00B7FF] to-blue-600 hover:from-[#33C5FF] hover:to-blue-500 text-[#080B12] text-xs font-black inline-flex items-center gap-2 transition-all shadow-lg shadow-[#00B7FF]/20 active:scale-95 disabled:opacity-50"
+                    className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-2 disabled:opacity-50"
                   >
-                    <Zap className="w-4 h-4 fill-current" />
-                    <span>⚡ সকল ম্যাচে ৫টি লাইভ সার্ভার অটোমেটিক বসিয়ে দিন (Auto-Pilot All)</span>
+                    <Zap className="w-4 h-4" />
+                    <span>সকল ম্যাচে অটো-টিভি সার্ভার বসান</span>
                   </button>
 
                   {discoveredServers && (
                     <button
                       type="button"
                       onClick={() => handleBindServersToMatch()}
-                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#16D98A] hover:bg-[#1ae895] text-[#080B12] text-xs font-bold inline-flex items-center gap-2 transition-all shadow-lg shadow-[#16D98A]/20 active:scale-95"
+                      className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#16D98A] hover:bg-[#1FE896] text-[#080B12] text-xs font-bold inline-flex items-center gap-2"
                     >
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>এই ৫টি সার্ভার নির্বাচিত ম্যাচে সেভ ও সক্রিয় করুন</span>
+                      <span>নির্বাচিত ম্যাচে সেভ করুন</span>
                     </button>
                   )}
                 </div>
-              </div>
 
-              {/* 5 Servers Display & Customizer */}
-              {discoveredServers && (
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-white flex items-center gap-2">
-                      <Server className="w-4 h-4 text-[#00B7FF]" />
-                      তৈরি হওয়া ৫টি সার্ভার কনফিগারেশন:
-                    </p>
-                    <span className="text-[11px] text-[#A5B1C2]">
-                      সূত্র: {streamSearchSource === 'gemini_search_grounding' ? 'গুগল সার্চ ও ইউটিউব গ্রাউন্ডিং' : 'ভেরিফায়েড ব্রডকাস্ট নেটওয়ার্ক'}
-                    </span>
-                  </div>
+                {discoveredServers && (
+                  <div className="space-y-3 pt-2 border-t border-white/[0.08]">
+                    <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                      <span className="font-semibold text-white flex items-center gap-1.5">
+                        <Server className="w-4 h-4 text-[#00B7FF]" />
+                        তৈরি হওয়া ৫টি সার্ভার
+                      </span>
+                      <span className="font-mono">{streamSearchSource || 'TV Broadcaster Network'}</span>
+                    </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                    {discoveredServers.map((srv, idx) => (
-                      <div
-                        key={srv.id}
-                        className={`p-3.5 rounded-xl border space-y-2 ${
-                          idx === 0
-                            ? 'bg-[#00B7FF]/10 border-[#00B7FF]/40 ring-1 ring-[#00B7FF]/30'
-                            : 'bg-[#101722] border-white/10'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-white">
-                            {idx === 0 ? '⚡ ' : ''}সার্ভার {idx + 1}
-                          </span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
-                            idx === 0 ? 'bg-[#00B7FF] text-[#080B12]' : 'bg-white/10 text-[#A5B1C2]'
-                          }`}>
-                            {srv.quality}
-                          </span>
-                        </div>
-                        <p className="text-[11px] font-semibold text-[#00B7FF]">
-                          {srv.badge}
-                        </p>
-                        <p className="text-[10px] text-[#A5B1C2] leading-relaxed">
-                          {srv.description}
-                        </p>
-                        <div className="pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                      {discoveredServers.map((srv, idx) => (
+                        <div
+                          key={srv.id}
+                          className="p-3.5 rounded-xl bg-[#141D2E] border border-white/[0.08] space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-white">Server {idx + 1}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-[#00B7FF] font-mono">
+                              {srv.quality}
+                            </span>
+                          </div>
+                          <p className="text-[11px] font-semibold text-[#16D98A] truncate">
+                            {srv.badge}
+                          </p>
                           <input
                             type="text"
                             value={srv.url}
@@ -1368,1033 +1791,889 @@ export const AdminPage: React.FC = () => {
                               updated[idx].url = e.target.value;
                               setDiscoveredServers(updated);
                             }}
-                            className="w-full bg-[#151E2B] border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white font-mono truncate focus:outline-none focus:border-[#00B7FF]"
-                            title="সার্ভার স্ট্রিম লিঙ্ক"
+                            className="w-full bg-[#080B12] border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white font-mono truncate outline-none"
                           />
+                          <button
+                            type="button"
+                            onClick={() => setTestStreamUrl(srv.url)}
+                            className="w-full py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-semibold text-white flex items-center justify-center gap-1"
+                          >
+                            <Play className="w-3 h-3 text-[#00B7FF]" />
+                            Test Play
+                          </button>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 6. MATCH CONTROLLER */}
+          {activeTab === 'events' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-2xl font-extrabold text-white">Match Controller</h1>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">
+                    Update live scores, toggle match status, or add new broadcasts.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={filterSport}
+                    onChange={(e) => setFilterSport(e.target.value)}
+                    className="h-9 px-3 rounded-xl bg-[#0F1623] border border-white/10 text-xs text-white"
+                  >
+                    <option value="all">All Sports</option>
+                    <option value="cricket">Cricket</option>
+                    <option value="football">Football</option>
+                    <option value="basketball">Basketball</option>
+                    <option value="tennis">Tennis</option>
+                  </select>
+
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="h-9 px-3 rounded-xl bg-[#0F1623] border border-white/10 text-xs text-white"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="LIVE">Live Now</option>
+                    <option value="UPCOMING">Upcoming</option>
+                    <option value="FINISHED">Finished</option>
+                  </select>
+                </div>
+              </div>
+
+              <form
+                onSubmit={handleCreateEvent}
+                className="bg-[#0F1623] rounded-2xl border border-white/[0.08] p-6 space-y-4"
+              >
+                <h2 className="text-sm font-bold text-white">
+                  {editingEventId ? 'Edit Match' : 'Create New Match'}
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    required
+                    value={evTitle}
+                    onChange={(e) => setEvTitle(e.target.value)}
+                    placeholder="Event title"
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  />
+                  <select
+                    value={evSport}
+                    onChange={(e) => setEvSport(e.target.value)}
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  >
+                    {sports.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={evComp}
+                    onChange={(e) => setEvComp(e.target.value)}
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  >
+                    {competitions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={evStatus}
+                    onChange={(e) => setEvStatus(e.target.value as EventStatus)}
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  >
+                    <option value="UPCOMING">UPCOMING</option>
+                    <option value="LIVE">LIVE</option>
+                    <option value="FINISHED">FINISHED</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={evDate}
+                    onChange={(e) => setEvDate(e.target.value)}
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  />
+                  <input
+                    type="time"
+                    value={evTime}
+                    onChange={(e) => setEvTime(e.target.value)}
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  />
+                </div>
+                <input
+                  type="url"
+                  value={evStream}
+                  onChange={(e) => setEvStream(e.target.value)}
+                  placeholder="Broadcast stream URL (optional)"
+                  className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    value={evScore}
+                    onChange={(e) => setEvScore(e.target.value)}
+                    placeholder="Score summary (e.g. 2 - 1)"
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  />
+                  <input
+                    type="url"
+                    value={evThumb}
+                    onChange={(e) => setEvThumb(e.target.value)}
+                    placeholder="Thumbnail URL (optional)"
+                    className="h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                  />
+                </div>
+                <textarea
+                  rows={2}
+                  value={evDesc}
+                  onChange={(e) => setEvDesc(e.target.value)}
+                  placeholder="Event description"
+                  className="w-full p-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    className="min-h-[40px] px-5 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> {editingEventId ? 'Update Event' : 'Add Event'}
+                  </button>
+                  {editingEventId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingEventId(null);
+                        setEvTitle('');
+                        setEvStream('');
+                        setEvThumb('');
+                        setEvScore('');
+                        setEvDesc('');
+                      }}
+                      className="min-h-[40px] px-4 py-2 rounded-xl bg-[#141D2E] text-xs font-semibold text-[#94A3B8]"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              <div className="space-y-3">
+                {events
+                  .filter((e) => filterSport === 'all' || e.sportId === filterSport)
+                  .filter((e) => filterStatus === 'all' || e.status === filterStatus)
+                  .map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="bg-[#141D2E] rounded-2xl border border-white/[0.08] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#00B7FF] bg-[#00B7FF]/15 px-2 py-0.5 rounded">
+                            {ev.sportId}
+                          </span>
+                          <span className="text-xs text-[#94A3B8] font-mono tabular-nums">
+                            {ev.eventDate} · {ev.eventTime}
+                          </span>
+                          {ev.featured && (
+                            <span className="text-[10px] font-bold text-amber-300 bg-amber-400/15 px-1.5 py-0.5 rounded font-mono">
+                              FEATURED
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-bold text-white truncate">{ev.title}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <input
+                          type="text"
+                          defaultValue={ev.scoreSummary || ''}
+                          onChange={(e) =>
+                            setQuickScoreMap((prev) => ({ ...prev, [ev.id]: e.target.value }))
+                          }
+                          placeholder="Live Score"
+                          className="w-28 sm:w-36 h-9 px-2.5 rounded-lg bg-[#080B12] border border-white/10 text-xs text-white font-mono"
+                        />
                         <button
                           type="button"
-                          onClick={() => setTestStreamUrl(srv.url)}
-                          className="w-full mt-1 py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] font-semibold text-[#A5B1C2] hover:text-white flex items-center justify-center gap-1"
+                          onClick={() => handleQuickScoreSave(ev)}
+                          className="h-9 px-2.5 rounded-lg bg-white/10 hover:bg-[#00B7FF] hover:text-[#080B12] text-white text-xs font-semibold flex items-center gap-1 transition-colors"
                         >
-                          <Play className="w-3 h-3 text-[#00B7FF]" />
-                          টেস্ট প্লে
+                          <Check className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
 
-            {/* Google Search Console & Index Verification Inspector */}
-            <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="p-2.5 rounded-xl bg-[#00B7FF]/10 text-[#00B7FF] border border-[#00B7FF]/20">
-                    <Globe className="w-5 h-5" />
-                  </span>
-                  <div>
-                    <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                      গুগল ইনডেক্স ভেরিফিকেশন ও সার্চ কনসোল চেকার (Google Index Status)
-                    </h2>
-                    <p className="text-xs text-[#A5B1C2]">
-                      গুগলে আপনার ওয়েবসাইট ইনডেক্স হয়েছে কিনা তা নিশ্চিত করার সম্পূর্ণ নির্দেশিকা ও এক-ক্লিক যাচাই টুল
-                    </p>
-                  </div>
-                </div>
+                      <div className="flex items-center gap-2 flex-wrap shrink-0">
+                        <div className="flex items-center gap-1 bg-[#080B12] p-1 rounded-xl border border-white/[0.08]">
+                          {(['LIVE', 'UPCOMING', 'FINISHED'] as EventStatus[]).map((st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => handleQuickStatusChange(ev, st)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-colors ${
+                                ev.status === st
+                                  ? st === 'LIVE'
+                                    ? 'bg-[#16D98A] text-[#080B12]'
+                                    : st === 'UPCOMING'
+                                    ? 'bg-[#00B7FF] text-[#080B12]'
+                                    : 'bg-white/20 text-white'
+                                  : 'text-[#94A3B8] hover:text-white'
+                              }`}
+                            >
+                              {st}
+                            </button>
+                          ))}
+                        </div>
 
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#16D98A]/15 border border-[#16D98A]/30 text-[#16D98A] text-xs font-semibold self-start sm:self-auto">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>মেটা ট্যাগ কার্যকর</span>
-                </div>
-              </div>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickFeaturedToggle(ev)}
+                          className={`p-2 rounded-xl border transition-colors ${
+                            ev.featured
+                              ? 'bg-amber-400/15 border-amber-400/35 text-amber-300'
+                              : 'bg-[#080B12] border-white/10 text-[#94A3B8]'
+                          }`}
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </button>
 
-              {/* Status Verification Checklist */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">Google Site Verification</span>
-                    <span className="text-[#16D98A] text-xs">✓ Active</span>
-                  </div>
-                  <p className="text-[11px] text-[#A5B1C2] font-mono break-all">
-                    6vx3TPoTIMK_BIUQaQG59mENiwW_nJgRoD0BcwdowOQ
-                  </p>
-                  <p className="text-[10px] text-[#16D98A]">HTML &lt;head&gt; সেকশনে সঠিক মেটা ট্যাগ যুক্ত আছে।</p>
-                </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingEventId(ev.id);
+                            setEvTitle(ev.title);
+                            setEvSport(ev.sportId);
+                            setEvComp(ev.competitionId);
+                            setEvDate(ev.eventDate);
+                            setEvTime(ev.eventTime);
+                            setEvStatus(ev.status);
+                            setEvStream(ev.authorizedViewingUrl || '');
+                            setEvThumb(ev.thumbnailUrl || '');
+                            setEvScore(ev.scoreSummary || '');
+                            setEvDesc(ev.description);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-[#080B12] text-xs font-semibold text-[#00B7FF] border border-white/10"
+                        >
+                          Edit
+                        </button>
 
-                <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">Sitemap.xml</span>
-                    <span className="text-[#16D98A] text-xs">✓ Ready</span>
-                  </div>
-                  <p className="text-[11px] text-[#A5B1C2] font-mono">
-                    /sitemap.xml
-                  </p>
-                  <p className="text-[10px] text-[#A5B1C2]">গুগল বটদের জন্য সকল খেলা ও পেজের এক্সএমএল ম্যাপ তৈরি।</p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">Robots.txt</span>
-                    <span className="text-[#16D98A] text-xs">✓ Allowed</span>
-                  </div>
-                  <p className="text-[11px] text-[#A5B1C2] font-mono">
-                    /robots.txt
-                  </p>
-                  <p className="text-[10px] text-[#A5B1C2]">গুগল সার্চ ইঞ্জিনকে সাইট ক্রল করার অনুমতি দেওয়া আছে।</p>
-                </div>
-              </div>
-
-              {/* Explanation: How to know if Google has indexed the site */}
-              <div className="bg-[#101722] rounded-xl border border-white/10 p-5 space-y-3">
-                <h3 className="text-xs font-bold text-[#00B7FF] uppercase tracking-wider">
-                  গুগলে ইনডেক্স হলে কিভাবে বুঝবেন? (৩টি সহজ উপায়)
-                </h3>
-                <div className="space-y-2.5 text-xs text-[#CBD5E1] leading-relaxed">
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[#00B7FF]/20 text-[#00B7FF] flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">১</span>
-                    <div>
-                      <strong className="text-white">গুগলে সরাসরি সার্চ করে দেখুন:</strong>
-                      <p className="text-[#A5B1C2] text-[11px] mt-0.5">
-                        গুগল সার্চবারে গিয়ে <code className="px-1.5 py-0.5 rounded bg-black/40 text-amber-300 font-mono">site:kheladekh.vercel.app</code> লিখে সার্চ করুন। যদি আপনার সাইটের লিঙ্ক গুগলের সার্চ রেজাল্টে দেখা যায়, তাহলে নিশ্চিত হবেন যে গুগল সাইটটি ইনডেক্স করে নিয়েছে।
-                      </p>
+                        <button
+                          type="button"
+                          onClick={() => deleteEvent(ev.id)}
+                          aria-label="Delete event"
+                          className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[#00B7FF]/20 text-[#00B7FF] flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">২</span>
-                    <div>
-                      <strong className="text-white">গুগল সার্চ কনসোলে "URL Inspection" (URL পরিদর্শন):</strong>
-                      <p className="text-[#A5B1C2] text-[11px] mt-0.5">
-                        সার্চ কনসোলের উপরের সার্চবারে আপনার সাইটের পুরো URL পেস্ট করে Enter চাপলে যদি <strong className="text-[#16D98A]">"URL is on Google"</strong> এবং সবুজ টিক চিহ্ন দেখায়, তবে সাইটটি সম্পূর্ণরূপে ইনডেক্সড।
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-[#00B7FF]/20 text-[#00B7FF] flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">৩</span>
-                    <div>
-                      <strong className="text-white">Sitemaps সেকশনে "Success" স্ট্যাটাস:</strong>
-                      <p className="text-[#A5B1C2] text-[11px] mt-0.5">
-                        সার্চ কনসোলের বাম পাশের <strong>Sitemaps</strong> মেনুতে <code className="text-emerald-400 font-mono">sitemap.xml</code> সাবমিট করলে সেখানে "Success" স্ট্যাটাস এবং ডিসকভার্ড পেজের সংখ্যা প্রদর্শিত হয়। (নতুন সাইট ভেরিফাই করার পর গুগল সাধারণত ২৪ থেকে ৭২ ঘণ্টার মধ্যে প্রথম ইনডেক্স সম্পন্ন করে)।
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 1-Click Action Buttons */}
-                <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/5">
-                  <a
-                    href="https://www.google.com/search?q=site:kheladekh.vercel.app"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-2 transition-colors shadow-md shadow-[#00B7FF]/20"
-                  >
-                    <Search className="w-4 h-4" />
-                    <span>গুগলে লাইভ চেক করুন (site:kheladekh.vercel.app)</span>
-                  </a>
-
-                  <a
-                    href="https://search.google.com/search-console"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#151E2B] hover:bg-white/10 border border-white/15 text-white text-xs font-semibold inline-flex items-center gap-2 transition-colors"
-                  >
-                    <ExternalLink className="w-4 h-4 text-[#00B7FF]" />
-                    <span>গুগল সার্চ কনসোল ওপেন করুন</span>
-                  </a>
-
-                  <a
-                    href="/sitemap.xml"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#151E2B] hover:bg-white/10 border border-white/15 text-white text-xs font-semibold inline-flex items-center gap-2 transition-colors"
-                  >
-                    <Link2 className="w-4 h-4 text-emerald-400" />
-                    <span>সাইটম্যাপ (sitemap.xml) দেখুন</span>
-                  </a>
-                </div>
+                  ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'events' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="font-display text-2xl font-extrabold text-white">Match Controller</h1>
-                <p className="text-xs text-[#A5B1C2] mt-0.5">
-                  Update live scores in 1 click, toggle match status, or manage fixtures.
-                </p>
-              </div>
-
-              {/* Filters */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <select
-                  value={filterSport}
-                  onChange={(e) => setFilterSport(e.target.value)}
-                  className="h-9 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-xs text-white"
-                >
-                  <option value="all">All Sports</option>
-                  <option value="cricket">Cricket</option>
-                  <option value="football">Football</option>
-                  <option value="basketball">Basketball</option>
-                  <option value="tennis">Tennis</option>
-                </select>
-
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="h-9 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-xs text-white"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="LIVE">Live Now</option>
-                  <option value="UPCOMING">Upcoming</option>
-                  <option value="FINISHED">Finished</option>
-                </select>
-              </div>
-            </div>
-            <form
-              onSubmit={handleCreateEvent}
-              className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4"
-            >
-              <h2 className="text-sm font-bold text-white">Create New Event</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* 7. NEWS */}
+          {activeTab === 'news' && (
+            <div className="space-y-6">
+              <h1 className="font-display text-2xl font-extrabold text-white">Manage News</h1>
+              <form
+                onSubmit={handleCreateNews}
+                className="bg-[#0F1623] rounded-2xl border border-white/[0.08] p-6 space-y-4"
+              >
                 <input
                   type="text"
                   required
-                  value={evTitle}
-                  onChange={(e) => setEvTitle(e.target.value)}
-                  placeholder="Event title"
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  value={newsTitle}
+                  onChange={(e) => setNewsTitle(e.target.value)}
+                  placeholder="Article title"
+                  className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
                 />
                 <select
-                  value={evSport}
-                  onChange={(e) => setEvSport(e.target.value)}
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  value={newsCat}
+                  onChange={(e) => setNewsCat(e.target.value)}
+                  className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
                 >
-                  {sports.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={evComp}
-                  onChange={(e) => setEvComp(e.target.value)}
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                >
-                  {competitions.map((c) => (
+                  {categories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
-                <select
-                  value={evStatus}
-                  onChange={(e) => setEvStatus(e.target.value as EventStatus)}
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                >
-                  <option value="UPCOMING">UPCOMING</option>
-                  <option value="LIVE">LIVE</option>
-                  <option value="FINISHED">FINISHED</option>
-                </select>
-                <input
-                  type="date"
-                  value={evDate}
-                  onChange={(e) => setEvDate(e.target.value)}
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                />
-                <input
-                  type="time"
-                  value={evTime}
-                  onChange={(e) => setEvTime(e.target.value)}
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                />
-              </div>
-              <input
-                type="url"
-                value={evStream}
-                onChange={(e) => setEvStream(e.target.value)}
-                placeholder="Authorized viewing URL (optional)"
-                className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input
                   type="text"
-                  value={evScore}
-                  onChange={(e) => setEvScore(e.target.value)}
-                  placeholder="Score summary (e.g. 2 - 1)"
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                  value={newsDesc}
+                  onChange={(e) => setNewsDesc(e.target.value)}
+                  placeholder="Short summary"
+                  className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
                 />
-                <input
-                  type="url"
-                  value={evThumb}
-                  onChange={(e) => setEvThumb(e.target.value)}
-                  placeholder="Thumbnail URL (or upload below)"
-                  className="h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+                <textarea
+                  rows={4}
+                  value={newsContent}
+                  onChange={(e) => setNewsContent(e.target.value)}
+                  placeholder="Article body"
+                  className="w-full p-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
                 />
-              </div>
-              <textarea
-                rows={2}
-                value={evDesc}
-                onChange={(e) => setEvDesc(e.target.value)}
-                placeholder="Event description"
-                className="w-full p-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-              />
-              <div className="flex items-center gap-3">
                 <button
                   type="submit"
                   className="min-h-[40px] px-5 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-2"
                 >
-                  <Plus className="w-4 h-4" /> {editingEventId ? 'Update Event' : 'Add Event'}
+                  <Plus className="w-4 h-4" /> Publish Article
                 </button>
-                {editingEventId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingEventId(null);
-                      setEvTitle('');
-                      setEvStream('');
-                      setEvThumb('');
-                      setEvScore('');
-                      setEvDesc('');
-                    }}
-                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#101722] text-xs font-semibold text-[#A5B1C2]"
-                  >
-                    Cancel Edit
-                  </button>
-                )}
-              </div>
-            </form>
+              </form>
 
-            <div className="space-y-3">
-              {events
-                .filter((e) => filterSport === 'all' || e.sportId === filterSport)
-                .filter((e) => filterStatus === 'all' || e.status === filterStatus)
-                .map((ev) => (
+              <div className="space-y-2.5">
+                {news.map((n) => (
                   <div
-                    key={ev.id}
-                    className="bg-[#151E2B] rounded-2xl border border-white/10 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:border-white/20"
+                    key={n.id}
+                    className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-4 flex items-center justify-between gap-4"
                   >
-                    {/* Left Info */}
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#00B7FF] bg-[#00B7FF]/15 px-2 py-0.5 rounded">
-                          {ev.sportId}
-                        </span>
-                        <span className="text-xs text-[#A5B1C2] font-mono">
-                          {ev.eventDate} · {ev.eventTime}
-                        </span>
-                        {ev.featured && (
-                          <span className="text-[10px] font-bold text-amber-400 bg-amber-400/15 px-1.5 py-0.2 rounded font-mono">
-                            ★ FEATURED
-                          </span>
-                        )}
-                        {!ev.published && (
-                          <span className="text-[10px] font-bold text-red-400 bg-red-400/15 px-1.5 py-0.2 rounded font-mono">
-                            DRAFT
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm sm:text-base font-bold text-white truncate">{ev.title}</p>
-                    </div>
-
-                    {/* Middle: 1-Click Inline Score Editor */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <input
-                        type="text"
-                        defaultValue={ev.scoreSummary || ''}
-                        onChange={(e) =>
-                          setQuickScoreMap((prev) => ({ ...prev, [ev.id]: e.target.value }))
-                        }
-                        placeholder="Live Score"
-                        className="w-28 sm:w-36 h-9 px-2.5 rounded-lg bg-[#101722] border border-white/15 text-xs text-white font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleQuickScoreSave(ev)}
-                        title="Save Live Score"
-                        className="h-9 px-2.5 rounded-lg bg-white/10 hover:bg-[#00B7FF] hover:text-[#080B12] text-white text-xs font-semibold flex items-center gap-1 transition-colors"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Save</span>
-                      </button>
-                    </div>
-
-                    {/* Right: 1-Click Status Switcher & Actions */}
-                    <div className="flex items-center gap-2 flex-wrap shrink-0">
-                      {/* 1-Click Status Pills */}
-                      <div className="flex items-center gap-1 bg-[#101722] p-1 rounded-xl border border-white/10">
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatusChange(ev, 'LIVE')}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
-                            ev.status === 'LIVE'
-                              ? 'bg-[#16D98A] text-[#080B12] shadow-sm'
-                              : 'text-[#A5B1C2] hover:text-white'
-                          }`}
-                        >
-                          LIVE
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatusChange(ev, 'UPCOMING')}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
-                            ev.status === 'UPCOMING'
-                              ? 'bg-[#00B7FF] text-[#080B12] shadow-sm'
-                              : 'text-[#A5B1C2] hover:text-white'
-                          }`}
-                        >
-                          UPCOMING
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatusChange(ev, 'FINISHED')}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
-                            ev.status === 'FINISHED'
-                              ? 'bg-white/20 text-white shadow-sm'
-                              : 'text-[#A5B1C2] hover:text-white'
-                          }`}
-                        >
-                          FINISHED
-                        </button>
-                      </div>
-
-                      {/* Featured Star Toggle */}
-                      <button
-                        type="button"
-                        onClick={() => handleQuickFeaturedToggle(ev)}
-                        title={ev.featured ? 'Remove from Featured' : 'Set as Featured'}
-                        className={`p-2 rounded-xl border transition-colors ${
-                          ev.featured
-                            ? 'bg-amber-400/20 border-amber-400/40 text-amber-400'
-                            : 'bg-[#101722] border-white/10 text-[#A5B1C2] hover:text-white'
-                        }`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Edit Full Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingEventId(ev.id);
-                          setEvTitle(ev.title);
-                          setEvSport(ev.sportId);
-                          setEvComp(ev.competitionId);
-                          setEvDate(ev.eventDate);
-                          setEvTime(ev.eventTime);
-                          setEvStatus(ev.status);
-                          setEvStream(ev.authorizedViewingUrl || '');
-                          setEvThumb(ev.thumbnailUrl || '');
-                          setEvScore(ev.scoreSummary || '');
-                          setEvDesc(ev.description);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-[#101722] text-xs font-semibold text-[#00B7FF] hover:border hover:border-[#00B7FF]"
-                      >
-                        Edit
-                      </button>
-
-                      {/* Delete Button */}
-                      <button
-                        type="button"
-                        onClick={() => deleteEvent(ev.id)}
-                        aria-label="Delete event"
-                        className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <p className="text-sm font-bold text-white">{n.title}</p>
+                    <button
+                      type="button"
+                      onClick={() => deleteNews(n.id)}
+                      aria-label="Delete article"
+                      className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'news' && (
-          <div className="space-y-6">
-            <h1 className="font-display text-2xl font-extrabold text-white">Manage News</h1>
-            <form
-              onSubmit={handleCreateNews}
-              className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4"
-            >
-              <input
-                type="text"
-                required
-                value={newsTitle}
-                onChange={(e) => setNewsTitle(e.target.value)}
-                placeholder="Article title"
-                className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-              />
-              <select
-                value={newsCat}
-                onChange={(e) => setNewsCat(e.target.value)}
-                className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
+          {/* 8. SPORTS */}
+          {activeTab === 'sports' && (
+            <div className="space-y-6">
+              <h1 className="font-display text-2xl font-extrabold text-white">Manage Sports</h1>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!sportName.trim()) return;
+                  const slug = sportName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                  await saveSport({ id: slug, name: sportName.trim(), slug });
+                  setSportName('');
+                  notify('Sport saved.');
+                }}
+                className="flex gap-3"
               >
+                <input
+                  type="text"
+                  value={sportName}
+                  onChange={(e) => setSportName(e.target.value)}
+                  placeholder="Sport name"
+                  className="flex-1 h-11 px-3 rounded-xl bg-[#0F1623] border border-white/10 text-sm text-white"
+                />
+                <button
+                  type="submit"
+                  className="px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
+                >
+                  Add Sport
+                </button>
+              </form>
+              <div className="space-y-2">
+                {sports.map((s) => (
+                  <div
+                    key={s.id}
+                    className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-4 flex items-center justify-between"
+                  >
+                    <span className="text-sm font-semibold text-white">{s.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteSport(s.id)}
+                      className="p-2 text-red-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 9. TEAMS */}
+          {activeTab === 'teams' && (
+            <div className="space-y-6">
+              <h1 className="font-display text-2xl font-extrabold text-white">Manage Teams</h1>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!teamName.trim()) return;
+                  const id = teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                  await saveTeam({
+                    id,
+                    name: teamName.trim(),
+                    shortName: teamShort.trim() || teamName.slice(0, 3).toUpperCase(),
+                    sportId: sports[0]?.id || 'football',
+                  });
+                  setTeamName('');
+                  setTeamShort('');
+                  notify('Team saved.');
+                }}
+                className="flex flex-col sm:flex-row gap-3"
+              >
+                <input
+                  type="text"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  placeholder="Team name"
+                  className="flex-1 h-11 px-3 rounded-xl bg-[#0F1623] border border-white/10 text-sm text-white"
+                />
+                <input
+                  type="text"
+                  value={teamShort}
+                  onChange={(e) => setTeamShort(e.target.value)}
+                  placeholder="Short (e.g. BAN)"
+                  className="w-36 h-11 px-3 rounded-xl bg-[#0F1623] border border-white/10 text-sm text-white"
+                />
+                <button
+                  type="submit"
+                  className="h-11 px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
+                >
+                  Add Team
+                </button>
+              </form>
+              <div className="space-y-2">
+                {teams.map((t) => (
+                  <div
+                    key={t.id}
+                    className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-4 flex items-center justify-between"
+                  >
+                    <span className="text-sm font-semibold text-white">
+                      {t.name} ({t.shortName})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => deleteTeam(t.id)}
+                      className="p-2 text-red-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 10. COMPETITIONS */}
+          {activeTab === 'competitions' && (
+            <div className="space-y-6">
+              <h1 className="font-display text-2xl font-extrabold text-white">
+                Manage Competitions
+              </h1>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!compName.trim()) return;
+                  const id = compName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                  await saveCompetition({
+                    id,
+                    name: compName.trim(),
+                    sportId: sports[0]?.id || 'football',
+                  });
+                  setCompName('');
+                  notify('Competition saved.');
+                }}
+                className="flex gap-3"
+              >
+                <input
+                  type="text"
+                  value={compName}
+                  onChange={(e) => setCompName(e.target.value)}
+                  placeholder="Competition name"
+                  className="flex-1 h-11 px-3 rounded-xl bg-[#0F1623] border border-white/10 text-sm text-white"
+                />
+                <button
+                  type="submit"
+                  className="px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
+                >
+                  Add Competition
+                </button>
+              </form>
+              <div className="space-y-2">
+                {competitions.map((c) => (
+                  <div
+                    key={c.id}
+                    className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-4 flex items-center justify-between"
+                  >
+                    <span className="text-sm font-semibold text-white">{c.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteCompetition(c.id)}
+                      className="p-2 text-red-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 11. CATEGORIES */}
+          {activeTab === 'categories' && (
+            <div className="space-y-6">
+              <h1 className="font-display text-2xl font-extrabold text-white">
+                Manage Categories
+              </h1>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!catName.trim()) return;
+                  const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                  await saveCategory({ id: slug, name: catName.trim(), slug });
+                  setCatName('');
+                  notify('Category saved.');
+                }}
+                className="flex gap-3"
+              >
+                <input
+                  type="text"
+                  value={catName}
+                  onChange={(e) => setCatName(e.target.value)}
+                  placeholder="Category name"
+                  className="flex-1 h-11 px-3 rounded-xl bg-[#0F1623] border border-white/10 text-sm text-white"
+                />
+                <button
+                  type="submit"
+                  className="px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
+                >
+                  Add Category
+                </button>
+              </form>
+              <div className="space-y-2">
                 {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={newsDesc}
-                onChange={(e) => setNewsDesc(e.target.value)}
-                placeholder="Short summary"
-                className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-              />
-              <textarea
-                rows={4}
-                value={newsContent}
-                onChange={(e) => setNewsContent(e.target.value)}
-                placeholder="Article body"
-                className="w-full p-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-              />
-              <button
-                type="submit"
-                className="min-h-[40px] px-5 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" /> Publish Article
-              </button>
-            </form>
-
-            <div className="space-y-3">
-              {news.map((n) => (
-                <div
-                  key={n.id}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-4 flex items-center justify-between gap-4"
-                >
-                  <p className="text-sm font-bold text-white">{n.title}</p>
-                  <button
-                    type="button"
-                    onClick={() => deleteNews(n.id)}
-                    aria-label="Delete article"
-                    className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'sports' && (
-          <div className="space-y-6">
-            <h1 className="font-display text-2xl font-extrabold text-white">Manage Sports</h1>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!sportName.trim()) return;
-                const slug = sportName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-                await saveSport({ id: slug, name: sportName.trim(), slug });
-                setSportName('');
-                notify('Sport saved.');
-              }}
-              className="flex gap-3"
-            >
-              <input
-                type="text"
-                value={sportName}
-                onChange={(e) => setSportName(e.target.value)}
-                placeholder="Sport name"
-                className="flex-1 h-11 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-sm text-white"
-              />
-              <button
-                type="submit"
-                className="px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
-              >
-                Add Sport
-              </button>
-            </form>
-            <div className="space-y-2">
-              {sports.map((s) => (
-                <div
-                  key={s.id}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-4 flex items-center justify-between"
-                >
-                  <span className="text-sm font-semibold text-white">{s.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => deleteSport(s.id)}
-                    className="p-2 text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'teams' && (
-          <div className="space-y-6">
-            <h1 className="font-display text-2xl font-extrabold text-white">Manage Teams</h1>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!teamName.trim()) return;
-                const id = teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-                await saveTeam({
-                  id,
-                  name: teamName.trim(),
-                  shortName: teamShort.trim() || teamName.slice(0, 3).toUpperCase(),
-                  sportId: sports[0]?.id || 'football',
-                });
-                setTeamName('');
-                setTeamShort('');
-                notify('Team saved.');
-              }}
-              className="flex flex-col sm:flex-row gap-3"
-            >
-              <input
-                type="text"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                placeholder="Team name"
-                className="flex-1 h-11 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-sm text-white"
-              />
-              <input
-                type="text"
-                value={teamShort}
-                onChange={(e) => setTeamShort(e.target.value)}
-                placeholder="Short (e.g. DDFC)"
-                className="w-36 h-11 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-sm text-white"
-              />
-              <button
-                type="submit"
-                className="h-11 px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
-              >
-                Add Team
-              </button>
-            </form>
-            <div className="space-y-2">
-              {teams.map((t) => (
-                <div
-                  key={t.id}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-4 flex items-center justify-between"
-                >
-                  <span className="text-sm font-semibold text-white">
-                    {t.name} ({t.shortName})
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => deleteTeam(t.id)}
-                    className="p-2 text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'competitions' && (
-          <div className="space-y-6">
-            <h1 className="font-display text-2xl font-extrabold text-white">
-              Manage Competitions
-            </h1>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!compName.trim()) return;
-                const id = compName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-                await saveCompetition({
-                  id,
-                  name: compName.trim(),
-                  sportId: sports[0]?.id || 'football',
-                });
-                setCompName('');
-                notify('Competition saved.');
-              }}
-              className="flex gap-3"
-            >
-              <input
-                type="text"
-                value={compName}
-                onChange={(e) => setCompName(e.target.value)}
-                placeholder="Competition name"
-                className="flex-1 h-11 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-sm text-white"
-              />
-              <button
-                type="submit"
-                className="px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
-              >
-                Add Competition
-              </button>
-            </form>
-            <div className="space-y-2">
-              {competitions.map((c) => (
-                <div
-                  key={c.id}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-4 flex items-center justify-between"
-                >
-                  <span className="text-sm font-semibold text-white">{c.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => deleteCompetition(c.id)}
-                    className="p-2 text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'categories' && (
-          <div className="space-y-6">
-            <h1 className="font-display text-2xl font-extrabold text-white">
-              Manage Categories
-            </h1>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!catName.trim()) return;
-                const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-                await saveCategory({ id: slug, name: catName.trim(), slug });
-                setCatName('');
-                notify('Category saved.');
-              }}
-              className="flex gap-3"
-            >
-              <input
-                type="text"
-                value={catName}
-                onChange={(e) => setCatName(e.target.value)}
-                placeholder="Category name"
-                className="flex-1 h-11 px-3 rounded-xl bg-[#151E2B] border border-white/10 text-sm text-white"
-              />
-              <button
-                type="submit"
-                className="px-5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold"
-              >
-                Add Category
-              </button>
-            </form>
-            <div className="space-y-2">
-              {categories.map((c) => (
-                <div
-                  key={c.id}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-4 flex items-center justify-between"
-                >
-                  <span className="text-sm font-semibold text-white">{c.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => deleteCategory(c.id)}
-                    className="p-2 text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'users' && (
-          <div className="space-y-4">
-            <h1 className="font-display text-2xl font-extrabold text-white">Registered Users</h1>
-            <div className="space-y-2">
-              {usersList.map((u) => (
-                <div
-                  key={u.uid}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-4 flex items-center justify-between"
-                >
-                  <div>
-                    <p className="text-sm font-bold text-white">{u.displayName}</p>
-                    <p className="text-xs text-[#A5B1C2]">{u.email}</p>
-                  </div>
-                  <span className="text-xs font-mono text-[#A5B1C2]">
-                    {u.savedEvents?.length || 0} saved
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'media' && (
-          <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
-            <h1 className="font-display text-xl font-bold text-white">
-              Media Library (Firebase Storage)
-            </h1>
-            <p className="text-xs text-[#A5B1C2]">
-              Upload authorized images (JPEG, PNG, WebP, GIF up to 5MB) to Firebase Storage.
-            </p>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              disabled={uploadingMedia}
-              onChange={(e) => handleFileUpload(e, () => {})}
-              className="block w-full text-xs text-[#A5B1C2] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#00B7FF] file:text-[#080B12] hover:file:bg-[#33C5FF]"
-            />
-            {uploadingMedia && (
-              <p className="text-xs text-[#00B7FF]">Uploading to Firebase Storage...</p>
-            )}
-            {uploadedUrls.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <p className="text-xs font-semibold text-white">Uploaded URLs:</p>
-                {uploadedUrls.map((url) => (
                   <div
-                    key={url}
-                    className="p-3 rounded-xl bg-[#101722] border border-white/10 text-xs font-mono text-[#16D98A] break-all"
+                    key={c.id}
+                    className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-4 flex items-center justify-between"
                   >
-                    {url}
+                    <span className="text-sm font-semibold text-white">{c.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteCategory(c.id)}
+                      className="p-2 text-red-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {activeTab === 'notifications' && (
-          <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-2">
-            <h1 className="font-display text-xl font-bold text-white">Notifications</h1>
-            <p className="text-xs text-[#A5B1C2]">
-              Users manage their event reminder and news alert preferences from their Profile
-              page.
-            </p>
-          </div>
-        )}
-
-        {activeTab === 'messages' && (
-          <div className="space-y-4">
-            <h1 className="font-display text-2xl font-extrabold text-white">
-              Contact Messages
-            </h1>
-            {messagesList.length > 0 ? (
-              <div className="space-y-3">
-                {messagesList.map((m) => (
+          {/* 12. USERS */}
+          {activeTab === 'users' && (
+            <div className="space-y-4">
+              <h1 className="font-display text-2xl font-extrabold text-white">
+                Registered Users ({usersList.length})
+              </h1>
+              <div className="space-y-2">
+                {usersList.map((u) => (
                   <div
-                    key={m.id}
-                    className="bg-[#151E2B] rounded-xl border border-white/10 p-4 space-y-1"
+                    key={u.uid}
+                    className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-4 flex items-center justify-between gap-4"
                   >
-                    <div className="flex items-center justify-between text-xs text-[#A5B1C2]">
-                      <span className="text-white font-semibold">
-                        {m.name} ({m.email})
-                      </span>
-                      <select
-                        value={m.status}
-                        onChange={async (e) => {
-                          await updateDoc(doc(db, 'contactMessages', m.id), {
-                            status: e.target.value,
-                          });
-                          notify('Message status updated.');
-                        }}
-                        className="bg-[#101722] border border-white/10 rounded-lg px-2 py-1 font-mono text-xs text-white"
-                      >
-                        <option value="NEW">NEW</option>
-                        <option value="READ">READ</option>
-                        <option value="ARCHIVED">ARCHIVED</option>
-                      </select>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{u.displayName}</p>
+                      <p className="text-xs text-[#94A3B8] truncate">
+                        {u.email || u.phoneNumber || 'Guest Session'}
+                        {u.phoneNumber && u.phoneVerified ? ` · ${u.phoneNumber} (Verified)` : ''}
+                      </p>
                     </div>
-                    <p className="text-sm font-bold text-[#00B7FF]">{m.subject}</p>
-                    <p className="text-xs text-[#A5B1C2]">{m.message}</p>
+                    <span className="text-xs font-mono text-[#00B7FF] tabular-nums shrink-0">
+                      {u.savedEvents?.length || 0} saved
+                    </span>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="bg-[#151E2B] rounded-xl border border-white/10 p-6 text-xs text-[#A5B1C2]">
-                No contact messages yet.
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {activeTab === 'settings' && (
-          <div className="space-y-6 max-w-4xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* 13. MEDIA */}
+          {activeTab === 'media' && (
+            <div className="bg-[#0F1623] rounded-2xl border border-white/[0.08] p-6 space-y-4">
+              <h1 className="font-display text-xl font-bold text-white">
+                Media Library (Firebase Storage)
+              </h1>
+              <p className="text-xs text-[#94A3B8]">
+                Upload images (JPEG, PNG, WebP, GIF up to 5MB) to Firebase Storage.
+              </p>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                disabled={uploadingMedia}
+                onChange={(e) => handleFileUpload(e, () => {})}
+                className="block w-full text-xs text-[#94A3B8] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#00B7FF] file:text-[#080B12] hover:file:bg-[#33C5FF]"
+              />
+              {uploadingMedia && (
+                <p className="text-xs text-[#00B7FF]">Uploading to Firebase Storage...</p>
+              )}
+              {uploadedUrls.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs font-semibold text-white">Uploaded URLs:</p>
+                  {uploadedUrls.map((url) => (
+                    <div
+                      key={url}
+                      className="p-3 rounded-xl bg-[#080B12] border border-white/10 text-xs font-mono text-[#16D98A] break-all"
+                    >
+                      {url}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 14. NOTIFICATIONS */}
+          {activeTab === 'notifications' && (
+            <div className="bg-[#0F1623] rounded-2xl border border-white/[0.08] p-6 space-y-2">
+              <h1 className="font-display text-xl font-bold text-white">Notifications</h1>
+              <p className="text-xs text-[#94A3B8]">
+                Users manage event reminders and news alerts from their Profile page.
+              </p>
+            </div>
+          )}
+
+          {/* 15. MESSAGES */}
+          {activeTab === 'messages' && (
+            <div className="space-y-4">
+              <h1 className="font-display text-2xl font-extrabold text-white">
+                Contact Messages
+              </h1>
+              {messagesList.length > 0 ? (
+                <div className="space-y-3">
+                  {messagesList.map((m) => (
+                    <div
+                      key={m.id}
+                      className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-4 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                        <span className="text-white font-semibold">
+                          {m.name} ({m.email})
+                        </span>
+                        <select
+                          value={m.status}
+                          onChange={async (e) => {
+                            await updateDoc(doc(db, 'contactMessages', m.id), {
+                              status: e.target.value,
+                            });
+                            notify('Message status updated.');
+                          }}
+                          className="bg-[#080B12] border border-white/10 rounded-lg px-2 py-1 font-mono text-xs text-white"
+                        >
+                          <option value="NEW">NEW</option>
+                          <option value="READ">READ</option>
+                          <option value="ARCHIVED">ARCHIVED</option>
+                        </select>
+                      </div>
+                      <p className="text-sm font-bold text-[#00B7FF]">{m.subject}</p>
+                      <p className="text-xs text-[#94A3B8]">{m.message}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-[#0F1623] rounded-xl border border-white/[0.08] p-6 text-xs text-[#94A3B8]">
+                  No contact messages yet.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 16. WEBSITE SETTINGS & FIREBASE AUTH SETUP */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6 max-w-4xl">
               <div>
                 <h1 className="font-display text-2xl font-extrabold text-white">
-                  ওয়েবসাইট ব্র্যান্ডিং ও বিজ্ঞাপনমুক্ত মোড (Brand &amp; Zero-Ad Settings)
+                  Website Settings & Firebase Auth Setup
                 </h1>
-                <p className="text-xs text-[#A5B1C2] mt-1">
-                  ওয়েবসাইটের নিজস্ব নাম, মালিকের তথ্য এবং ১০০% বিজ্ঞাপনমুক্ত স্ট্রিমিং সুরক্ষা নিয়ন্ত্রণ করুন।
+                <p className="text-xs text-[#94A3B8] mt-1">
+                  সাইটের নাম, লোগো, কন্টাক্ট ইমেইল এবং Firebase Sign-In ও ব্র্যান্ড কনফিগারেশন।
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab('sourceBridge')}
-                className="px-4 py-2 rounded-xl bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-xs font-bold self-start"
-              >
-                অ্যাপস ব্রিজ খুলুন →
-              </button>
-            </div>
 
-            {/* 100% Ad-Free Zero-Ad Shield Status Card */}
-            <div className="bg-[#151E2B] rounded-2xl border border-[#16D98A]/30 p-6 space-y-4 relative overflow-hidden">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-[#16D98A]/15 border border-[#16D98A]/30 flex items-center justify-center text-[#16D98A]">
-                    <ShieldCheck className="w-6 h-6" />
+              {/* Firebase Console 1-Click Checklist */}
+              <div className="rounded-2xl bg-[#0F1623] border border-white/[0.08] p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <KeyRound className="w-5 h-5 text-[#00B7FF]" />
+                    <div>
+                      <h2 className="text-sm font-bold text-white">
+                        Firebase Auth & Google Branding Setup (Project: powerful-minutia-6bcxw)
+                      </h2>
+                      <p className="text-xs text-[#94A3B8]">
+                        কোডে Phone OTP, Google, Email/Password ও Anonymous সব চালু করা আছে। নিচের ৩টি অপশন Firebase Console-এ অন করলেই লাইভ কাজ করবে:
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base font-bold text-white flex items-center gap-2">
-                      ১০০% বিজ্ঞাপনমুক্ত মোড (Zero-Ad Shield)
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          adFreeMode
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-white/10 text-[#A5B1C2]'
-                        }`}
-                      >
-                        {adFreeMode ? 'সক্রিয় (0% Ads)' : 'বন্ধ'}
-                      </span>
-                    </h2>
-                    <p className="text-xs text-[#A5B1C2] mt-0.5">
-                      প্রি-রোল পপ-আপ বিজ্ঞাপন বন্ধ আছে এবং সোর্স অ্যাপস/প্লেলিস্টের অ্যাড ডোমেইন ও HLS অ্যাড সেগমেন্ট সার্ভার থেকেই বাদ দেওয়া হচ্ছে।
+                  <a
+                    href="https://console.firebase.google.com/project/powerful-minutia-6bcxw/authentication/providers"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3.5 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 self-start"
+                  >
+                    <span>Open Firebase Console</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="rounded-xl bg-[#141D2E] border border-white/[0.08] p-4 space-y-1.5">
+                    <p className="text-xs font-bold text-white">1. Sign-In Providers</p>
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Authentication → Sign-in method থেকে <strong className="text-white">Google</strong>,{' '}
+                      <strong className="text-white">Email/Password</strong>,{' '}
+                      <strong className="text-white">Phone</strong> এবং{' '}
+                      <strong className="text-white">Anonymous</strong> Enable করুন।
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-[#141D2E] border border-white/[0.08] p-4 space-y-1.5">
+                    <p className="text-xs font-bold text-white">2. Email Sender & Short Reset Link</p>
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Templates → Sender name দিন:{' '}
+                      <code className="text-[#16D98A] font-mono">KhelaDekH Support Team</code> এবং Action URL দিন:{' '}
+                      <code className="text-[#00B7FF] font-mono break-all">
+                        {resetOrigin ? `${resetOrigin}/reset` : '/reset'}
+                      </code>
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-[#141D2E] border border-white/[0.08] p-4 space-y-1.5">
+                    <p className="text-xs font-bold text-white">3. Google Sign-In Title</p>
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Google Cloud OAuth Consent Screen ও Firebase Project Settings-এ Public App Name দিন:{' '}
+                      <code className="text-amber-300 font-mono">KhelaDekH</code>।
                     </p>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setAdFreeMode(!adFreeMode)}
-                  className={`px-4 py-2 rounded-xl text-xs font-black transition-all shrink-0 ${
-                    adFreeMode
-                      ? 'bg-[#16D98A] text-[#080B12]'
-                      : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                >
-                  {adFreeMode ? '🛡️ অ্যাড-মুক্ত মোড চালু' : 'চালু করুন'}
-                </button>
               </div>
-            </div>
 
-            {/* General Site Settings & Branding Form */}
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                await saveSettings({
-                  ...settings,
-                  siteName: siteName.trim() || 'KhelaDekH',
-                  ownerName: ownerName.trim(),
-                  logoUrl: logoUrl.trim() || settings.logoUrl,
-                  tagline,
-                  contactEmail,
-                  footerText,
-                  adFreeMode,
-                  preRollAd: {
-                    enabled: false,
-                    durationSeconds: 0,
-                    frequencyHours: 0,
-                    title: '',
-                    description: '',
-                    badgeText: '',
-                    imageUrl: '',
-                    targetUrl: '',
-                    ctaText: '',
-                  },
-                });
-                notify('ওয়েবসাইটের নাম, ব্র্যান্ডিং ও বিজ্ঞাপনমুক্ত সেটিংস সংরক্ষিত হয়েছে!');
-              }}
-              className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4"
-            >
-              <h2 className="text-base font-bold text-white mb-2">সাধারণ ওয়েবসাইট ও ব্র্যান্ড সেটিংস</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-[#A5B1C2] mb-1">Site / Brand Name</label>
-                  <input
-                    type="text"
-                    value={siteName}
-                    onChange={(e) => setSiteName(e.target.value)}
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#A5B1C2] mb-1">Owner Name</label>
-                  <input
-                    type="text"
-                    value={ownerName}
-                    onChange={(e) => setOwnerName(e.target.value)}
-                    placeholder="আপনার নাম"
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#A5B1C2] mb-1">Logo URL</label>
-                  <input
-                    type="text"
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="/src/assets/images/kheladekh_logo_1793952334814.jpg"
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-xs font-mono text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#A5B1C2] mb-1">Tagline</label>
-                  <input
-                    type="text"
-                    value={tagline}
-                    onChange={(e) => setTagline(e.target.value)}
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#A5B1C2] mb-1">Contact Email</label>
-                  <input
-                    type="email"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#A5B1C2] mb-1">Footer Text</label>
-                  <input
-                    type="text"
-                    value={footerText}
-                    onChange={(e) => setFooterText(e.target.value)}
-                    className="w-full h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold hover:brightness-110 transition-all shadow-md"
+              {/* General Brand Settings Form */}
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await saveSettings({
+                    ...settings,
+                    siteName: siteName.trim() || 'KhelaDekH',
+                    ownerName: ownerName.trim(),
+                    logoUrl: logoUrl.trim() || settings.logoUrl,
+                    tagline,
+                    contactEmail: contactEmail.trim() || 'support@kheladekh.com',
+                    footerText,
+                    adFreeMode,
+                    adControl: settings.adControl
+                      ? { ...settings.adControl, adsEnabled: !adFreeMode }
+                      : undefined,
+                  });
+                  notify('ওয়েবসাইটের সকল সেটিংস সংরক্ষিত হয়েছে।');
+                }}
+                className="bg-[#0F1623] rounded-2xl border border-white/[0.08] p-6 space-y-4"
               >
-                সব সেটিংস সেভ করুন (Save All Settings)
-              </button>
-            </form>
-          </div>
-        )}
-
-        {activeTab === 'audit' && (
-          <div className="space-y-4">
-            <h1 className="font-display text-2xl font-extrabold text-white">Audit Logs</h1>
-            <div className="space-y-2">
-              {auditList.map((log) => (
-                <div
-                  key={log.id}
-                  className="bg-[#151E2B] rounded-xl border border-white/10 p-3 flex items-center justify-between text-xs font-mono"
-                >
-                  <span className="text-white">
-                    {log.action} · {log.targetCollection}/{log.targetId}
-                  </span>
-                  <span className="text-[#A5B1C2]">{log.actorEmail}</span>
+                <h2 className="text-sm font-bold text-white">সাধারণ ওয়েবসাইট ও ব্র্যান্ড সেটিংস</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-[#94A3B8] mb-1">Site / Brand Name</label>
+                    <input
+                      type="text"
+                      value={siteName}
+                      onChange={(e) => setSiteName(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#94A3B8] mb-1">Owner Name</label>
+                    <input
+                      type="text"
+                      value={ownerName}
+                      onChange={(e) => setOwnerName(e.target.value)}
+                      placeholder="আপনার নাম"
+                      className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#94A3B8] mb-1">Logo URL</label>
+                    <input
+                      type="text"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="/src/assets/images/kheladekh_logo_1793952334814.jpg"
+                      className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-xs font-mono text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#94A3B8] mb-1">Support Contact Email</label>
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-[#94A3B8] mb-1">Tagline</label>
+                    <input
+                      type="text"
+                      value={tagline}
+                      onChange={(e) => setTagline(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-[#94A3B8] mb-1">Footer Text</label>
+                    <input
+                      type="text"
+                      value={footerText}
+                      onChange={(e) => setFooterText(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-[#080B12] border border-white/10 text-sm text-white"
+                    />
+                  </div>
                 </div>
-              ))}
+                <button
+                  type="submit"
+                  className="min-h-[42px] px-6 py-2.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-bold transition-colors"
+                >
+                  সব সেটিংস সেভ করুন
+                </button>
+              </form>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* 17. AUDIT LOGS */}
+          {activeTab === 'audit' && (
+            <div className="space-y-4">
+              <h1 className="font-display text-2xl font-extrabold text-white">Audit Logs</h1>
+              <div className="space-y-2">
+                {auditList.map((log) => (
+                  <div
+                    key={log.id}
+                    className="bg-[#141D2E] rounded-xl border border-white/[0.08] p-3 flex items-center justify-between text-xs font-mono"
+                  >
+                    <span className="text-white">
+                      {log.action} · {log.targetCollection}/{log.targetId}
+                    </span>
+                    <span className="text-[#94A3B8]">{log.actorEmail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Live Stream Preview Modal */}
       {testStreamUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="w-full max-w-4xl bg-[#101722] border border-white/15 rounded-3xl p-4 sm:p-6 space-y-4 shadow-2xl">
+          <div className="w-full max-w-4xl bg-[#0F1623] border border-white/15 rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-[#16D98A] font-mono font-bold">
-                  🛡️ অ্যাড-মুক্ত লাইভ টেস্ট প্লেয়ার ({settings.siteName || 'KhelaDekH'})
+                  Live Stream Preview ({brandName})
                 </p>
                 <h3 className="text-sm sm:text-base font-bold text-white truncate">
                   {testStreamTitle}
@@ -2404,7 +2683,6 @@ export const AdminPage: React.FC = () => {
                 type="button"
                 onClick={() => setTestStreamUrl(null)}
                 className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white"
-                title="বন্ধ করুন"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2413,6 +2691,15 @@ export const AdminPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Pre-Roll Ad Live Preview Modal */}
+      <PreRollAdModal
+        forcePreview
+        config={preRollForm}
+        isOpen={previewPreRollOpen}
+        onClose={() => setPreviewPreRollOpen(false)}
+        contextText="Admin Pre-Roll Live Preview"
+      />
     </div>
   );
 };

@@ -7,6 +7,7 @@ import { EventCard } from '../components/EventCard';
 import { NewsCard } from '../components/NewsCard';
 import { AutoSyncBar } from '../components/AutoSyncBar';
 import { StadiumSoundboard } from '../components/StadiumSoundboard';
+import { AdsterraBanner320x50, AdsterraNativeBanner } from '../components/AdsterraAds';
 
 export const HomePage: React.FC = () => {
   const { events, sports, news, loading, settings } = useData();
@@ -195,6 +196,8 @@ export const HomePage: React.FC = () => {
         ))}
       </div>
 
+      <AdsterraBanner320x50 />
+
       {/* Live Events Section */}
       <section>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
@@ -330,6 +333,8 @@ export const HomePage: React.FC = () => {
           </Link>
         </div>
       </section>
+
+      <AdsterraNativeBanner />
 
       {/* Popular Sports */}
       <section>

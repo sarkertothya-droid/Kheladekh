@@ -41,11 +41,11 @@ export interface ResolutionOption {
   height?: number;
 }
 
-export const VERIFIED_HLS_STREAM_1 = VERIFIED_SPORTS_STREAMS.GTV_LIVE;
-export const VERIFIED_HLS_STREAM_2 = VERIFIED_SPORTS_STREAMS.TSPORTS_OFFICIAL;
-export const VERIFIED_HLS_STREAM_3 = VERIFIED_SPORTS_STREAMS.ACC_SPORTS;
-export const VERIFIED_HLS_STREAM_4 = VERIFIED_SPORTS_STREAMS.ANTENA_SPORT;
-export const VERIFIED_MP4_STREAM_5 = VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT;
+export const VERIFIED_HLS_STREAM_1 = VERIFIED_SPORTS_STREAMS.WILLOW_SPORTS;
+export const VERIFIED_HLS_STREAM_2 = VERIFIED_SPORTS_STREAMS.GTV_LIVE;
+export const VERIFIED_HLS_STREAM_3 = VERIFIED_SPORTS_STREAMS.DD_SPORTS;
+export const VERIFIED_HLS_STREAM_4 = VERIFIED_SPORTS_STREAMS.BEIN_XTRA;
+export const VERIFIED_MP4_STREAM_5 = VERIFIED_SPORTS_STREAMS.FIFA_PLUS;
 
 const DEFAULT_BROADCAST_STREAM = VERIFIED_HLS_STREAM_1;
 
@@ -72,43 +72,43 @@ export const buildDefaultServers = (primaryUrl?: string, brandName = 'KhelaDekH'
   return [
     {
       id: 'server-1',
-      name: `${brandName} সার্ভার ১ (আল্ট্রা এইচডি ১০৮০p)`,
-      quality: '1080p Ultra HD',
+      name: `${brandName} সার্ভার ১ (প্রাইমারি টিভি ১০৮০p)`,
+      quality: '1080p HD TV',
       url: cleanPrimary,
-      badge: 'সবচেয়ে দ্রুত ও স্পষ্ট',
-      description: 'সর্বোচ্চ স্পিড ও ক্রিস্টাল ক্লিয়ার লাইভ স্পোর্টস ব্রডকাস্ট (কোনো বিজ্ঞাপন ছাড়া)।',
+      badge: 'ম্যাচ ব্রডকাস্টার',
+      description: 'সরাসরি চলমান খেলা সম্প্রচারকারী টিভি চ্যানেল (দ্রুত ও স্থিতিশীল)।',
     },
     {
       id: 'server-2',
-      name: 'T Sports Official Live (বাংলাদেশ)',
-      quality: '1080p Official',
+      name: 'GTV বাংলাদেশ লাইভ (গাজী টিভি)',
+      quality: '1080p HLS',
       url: VERIFIED_HLS_STREAM_2,
-      badge: 'টি স্পোর্টস অফিশিয়াল',
-      description: 'বাংলাদেশের প্রথম ক্রীড়া চ্যানেল টি স্পোর্টস (@TSportsbd) এর অফিশিয়াল লাইভ ফিড।',
+      badge: 'বাংলাদেশ টিভি',
+      description: 'বাংলাদেশ গাজী টিভি (GTV) সরাসরি লাইভ স্পোর্টস ফিড।',
     },
     {
       id: 'server-3',
-      name: `${brandName} সার্ভার ৩ (গ্লোবাল এইচডি ৭২০p)`,
-      quality: '720p HD',
+      name: 'DD Sports Official Live',
+      quality: '1080p HD TV',
       url: VERIFIED_HLS_STREAM_3,
-      badge: 'স্থিতিশীল ব্যাকআপ',
-      description: 'আন্তর্জাতিক স্পোর্টস নেটওয়ার্ক থেকে সংগৃহীত দ্বিতীয় লাইভ ফিড।',
+      badge: 'অফিশিয়াল স্পোর্টস',
+      description: 'আন্তর্জাতিক ক্রিকেট ও স্পোর্টস অফিশিয়াল লাইভ টিভি চ্যানেল।',
     },
     {
       id: 'server-4',
-      name: `${brandName} সার্ভার ৪ (ইউরোপ মিরর)`,
-      quality: 'HD Mirror',
+      name: 'beIN SPORTS XTRA Live',
+      quality: '1080p HD TV',
       url: VERIFIED_HLS_STREAM_4,
-      badge: 'বিকল্প মিরর',
-      description: 'দুর্বল ইন্টারনেট সংযোগের জন্য উপযুক্ত সরাসরি স্পোর্টস মিরর।',
+      badge: 'গ্লোবাল স্পোর্টস টিভি',
+      description: 'আন্তর্জাতিক ফুটবল ও মাল্টি-স্পোর্টস টিভি চ্যানেল।',
     },
     {
       id: 'server-5',
-      name: `${brandName} সার্ভার ৫ (ইমার্জেন্সি স্পোর্টস ফিড)`,
-      quality: 'Direct Sports',
+      name: 'FIFA+ Live Sports TV',
+      quality: '1080p HD TV',
       url: VERIFIED_MP4_STREAM_5,
-      badge: 'ইমার্জেন্সি ব্যাকআপ',
-      description: 'পিক আওয়ারে অন্য সার্ভার ব্যস্ত থাকলে জরুরি লাইভ স্পোর্টস ব্যাকআপ ফিড।',
+      badge: 'ব্যাকআপ টিভি ফিড',
+      description: 'হাই-স্পিড আন্তর্জাতিক লাইভ টিভি ব্যাকআপ।',
     },
   ];
 };

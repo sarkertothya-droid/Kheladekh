@@ -17,6 +17,7 @@ import { NewsDetailsPage } from './pages/NewsDetailsPage';
 import { SearchPage } from './pages/SearchPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AuthPage } from './pages/AuthPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { LegalPage } from './pages/LegalPage';
@@ -59,6 +60,7 @@ export default function App() {
                   <Route path="/search" element={<SearchPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/auth" element={<AuthPage />} />
+                  <Route path="/reset" element={<ResetPasswordPage />} />
                   <Route path="/fixtures" element={<HomePage />} />
                   <Route path="/matches" element={<HomePage />} />
                   <Route path="/about" element={<AboutPage />} />

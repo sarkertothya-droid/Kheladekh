@@ -63,3 +63,22 @@ export function resetAdCooldown(): void {
     console.warn('Failed to reset ad cooldown:', err);
   }
 }
+
+/**
+ * Validates that an ad target or image URL strictly uses http: or https: protocol.
+ */
+export function isSafeAdUrl(rawUrl?: string | null): string | null {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+

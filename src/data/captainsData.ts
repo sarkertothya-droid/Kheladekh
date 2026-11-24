@@ -30,6 +30,8 @@ export const VERIFIED_SPORTS_STREAMS = {
   RED_BULL_TV: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',
   EUROVISION_SPORT:
     'https://amg26268-amg26268c34-amgplt0018.playout.now3.amagi.tv/ts-us-e2-n1/playlist/amg26268-amg26268c34-amgplt0018/playlist.m3u8',
+  TENNIS_CHANNEL:
+    'https://cdn-ue1-prod.tsv2.amagi.tv/linear/amg01444-tennischannelth-tennischannelnl-samsungnl/playlist.m3u8',
   FUBO_SPORTS: 'https://dnf08l6u6uxnz.cloudfront.net/master.m3u8',
   ACI_SPORT_TV: 'https://webstream.multistream.it/memfs/e2cb3629-c1a2-495b-b43a-9eb386f04ed8.m3u8',
   IRAQIA_SPORT: 'https://imn-live.esite-lab.com/hls/iraqia-sports-1.m3u8',

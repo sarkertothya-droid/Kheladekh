@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import net from 'net';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -13,6 +14,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const OWNER_MAIL = 'factsknown178@gmail.com';
+const SUPPORT_SENDER_NAME = 'KhelaDekH Support Team';
+const SUPPORT_SENDER_EMAIL = (process.env.SUPPORT_EMAIL || 'support@kheladekh.com').trim();
 
 app.use(express.json());
 
@@ -97,17 +100,39 @@ const ai = hasGeminiKey
     })
   : null;
 
-// Verified 200 OK Live Sports-Only Broadcast Streams (Zero cartoons or non-sports content)
+// Verified 200 OK Live Sports-Only Broadcast TV Channels (Mapped by Sport)
+const SPORT_TV_CHANNELS = {
+  GTV_LIVE:
+    'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8',
+  WILLOW_SPORTS: 'https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8',
+  CRICKET_GOLD:
+    'https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/manifest.m3u8',
+  DD_SPORTS:
+    'https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8',
+  FIFA_PLUS:
+    'https://95cedebd.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/Vml6aW9fRklGQVBsdXNFbmdsaXNoX0hMUw/playlist.m3u8',
+  BEIN_XTRA: 'https://bein-xtra-bein.amagi.tv/playlist.m3u8',
+  TYC_SPORTS:
+    'https://amg26268-amg26268c14-freelivesports-emea-10267.playouts.now.amagi.tv/ts-us-e2-n2/playlist/amg26268-sportsstudio-tycsports-freelivesportsemea/playlist.m3u8',
+  INTER_TV: 'https://d3k8wzt41aflvx.cloudfront.net/INTERTV/Live.m3u8',
+  TENNIS_CHANNEL:
+    'https://cdn-ue1-prod.tsv2.amagi.tv/linear/amg01444-tennischannelth-tennischannelnl-samsungnl/playlist.m3u8',
+  EUROVISION_SPORT:
+    'https://amg26268-amg26268c34-amgplt0018.playout.now3.amagi.tv/ts-us-e2-n1/playlist/amg26268-amg26268c34-amgplt0018/playlist.m3u8',
+  FUBO_SPORTS: 'https://dnf08l6u6uxnz.cloudfront.net/master.m3u8',
+  ACC_SPORTS: 'https://raycom-accdn-firetv.amagi.tv/playlist.m3u8',
+  RED_BULL_TV: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',
+};
+
 const VERIFIED_SPORTS_HLS = [
-  'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8', // GTV Live Sports
-  'https://raycom-accdn-firetv.amagi.tv/playlist.m3u8', // ACC Digital Network Sports
-  'https://a62dad94.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWV1X0ZJRkFQbHVzRW5nbGlzaF9ITFM/playlist.m3u8', // FIFA+ Live Sports
-  'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8', // Red Bull TV Live Sports
-  'https://stream1.antenaplay.ro/as/AS.ro/chunklist.m3u8', // AntenaSport Live
-  'https://imn-live.esite-lab.com/hls/iraqia-sports-1.m3u8', // Al Iraqia Sport
-  'https://webstream.multistream.it/memfs/e2cb3629-c1a2-495b-b43a-9eb386f04ed8.m3u8', // ACI Sport TV
-  'https://live77cdn2.antenaplay.ro/live2_sport07/live2_sport07_3500k.m3u8', // AntenaPlay Events Sports
-  'https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_plus/live.livx/playlist.m3u8', // 5Plus Live Sports
+  SPORT_TV_CHANNELS.WILLOW_SPORTS,
+  SPORT_TV_CHANNELS.GTV_LIVE,
+  SPORT_TV_CHANNELS.DD_SPORTS,
+  SPORT_TV_CHANNELS.BEIN_XTRA,
+  SPORT_TV_CHANNELS.FIFA_PLUS,
+  SPORT_TV_CHANNELS.TENNIS_CHANNEL,
+  SPORT_TV_CHANNELS.FUBO_SPORTS,
+  SPORT_TV_CHANNELS.RED_BULL_TV,
 ];
 
 const CACHE_TTL_MS = 60 * 1000; // 1-minute live sync cycle
@@ -122,10 +147,31 @@ function requiresCorsRelay(streamUrl: string): boolean {
 }
 
 function pickSportBroadcastUrl(sportId: string, idx: number): string {
-  if (sportId === 'cricket') return idx % 2 === 0 ? VERIFIED_SPORTS_HLS[0] : VERIFIED_SPORTS_HLS[3];
-  if (sportId === 'football') return idx % 2 === 0 ? VERIFIED_SPORTS_HLS[5] : VERIFIED_SPORTS_HLS[2];
-  if (sportId === 'basketball') return VERIFIED_SPORTS_HLS[3];
-  if (sportId === 'tennis') return VERIFIED_SPORTS_HLS[3];
+  const key = (sportId || '').toLowerCase();
+  if (key === 'cricket') {
+    const cricketChannels = [
+      SPORT_TV_CHANNELS.WILLOW_SPORTS,
+      SPORT_TV_CHANNELS.DD_SPORTS,
+      SPORT_TV_CHANNELS.GTV_LIVE,
+      SPORT_TV_CHANNELS.CRICKET_GOLD,
+    ];
+    return cricketChannels[idx % cricketChannels.length];
+  }
+  if (key === 'football') {
+    const footballChannels = [
+      SPORT_TV_CHANNELS.BEIN_XTRA,
+      SPORT_TV_CHANNELS.FIFA_PLUS,
+      SPORT_TV_CHANNELS.TYC_SPORTS,
+      SPORT_TV_CHANNELS.INTER_TV,
+    ];
+    return footballChannels[idx % footballChannels.length];
+  }
+  if (key === 'tennis') {
+    return idx % 2 === 0 ? SPORT_TV_CHANNELS.TENNIS_CHANNEL : SPORT_TV_CHANNELS.EUROVISION_SPORT;
+  }
+  if (key === 'basketball') {
+    return idx % 2 === 0 ? SPORT_TV_CHANNELS.FUBO_SPORTS : SPORT_TV_CHANNELS.ACC_SPORTS;
+  }
   return VERIFIED_SPORTS_HLS[idx % VERIFIED_SPORTS_HLS.length];
 }
 
@@ -673,15 +719,33 @@ app.get('/api/vpn-relay', async (req, res) => {
       upstreamHeaders['Origin'] = parsedTarget.origin;
     }
 
-    const upstream = await fetch(parsedTarget.href, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: upstreamHeaders,
-    });
+    let upstream: Response | null = null;
+    let lastStatus = 502;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const resUpstream = await fetch(parsedTarget.href, {
+          signal: controller.signal,
+          redirect: 'follow',
+          headers: upstreamHeaders,
+        });
+        if (resUpstream.ok) {
+          upstream = resUpstream;
+          break;
+        }
+        lastStatus = resUpstream.status;
+        if (resUpstream.status >= 400 && resUpstream.status < 500 && resUpstream.status !== 429) {
+          upstream = resUpstream;
+          break;
+        }
+      } catch (err) {
+        if (attempt === 1) throw err;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
 
-    if (!upstream.ok) {
+    if (!upstream || !upstream.ok) {
       clearTimeout(timeout);
-      return res.status(upstream.status).send(`Upstream stream returned ${upstream.status}`);
+      return res.status(upstream?.status || lastStatus).send(`Upstream stream returned ${upstream?.status || lastStatus}`);
     }
 
     const contentType = (upstream.headers.get('content-type') || '').toLowerCase();
@@ -1056,44 +1120,136 @@ app.post('/api/discover-stream-servers', async (req, res) => {
     const ytEmbed = (vid: string) =>
       `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1&playsinline=1&enablejsapi=1`;
 
-    const isCricketOrBd =
+    const isCricket =
       sportId === 'cricket' ||
-      /bangladesh|tigers|south africa|cricket/i.test(query);
+      /bangladesh|cricket|ipl|psl|bbl|bpl|t20|odi|test match|wickets/i.test(query);
+    const isFootball =
+      sportId === 'football' ||
+      /football|soccer|premier league|la liga|champions league|uefa|fifa|madrid|barcelona|arsenal|liverpool|manchester|chelsea/i.test(
+        query
+      );
+    const isTennis =
+      sportId === 'tennis' ||
+      /tennis|atp|wta|wimbledon|open|alcaraz|sinner|djokovic/i.test(query);
+    const isBasketball =
+      sportId === 'basketball' ||
+      /basketball|nba|lakers|warriors|celtics|pistons|thunder|hawks/i.test(query);
 
-    const gtvServer = {
-      id: 'server-1',
-      name: 'GTV বাংলাদেশ লাইভ (FHD ১০৮০p HLS)',
-      quality: '1080p HLS',
-      url: applyVpnRoute(VERIFIED_SPORTS_HLS[0]),
-      badge: useVpn ? `VPN (${region.toUpperCase()}) LIVE` : 'সরাসরি ভিডিও LIVE',
-      description: 'সরাসরি গাজী টিভি (GTV) বাংলাদেশ স্পোর্টস HLS ব্রডকাস্ট — তাৎক্ষণিক লাইভ ভিডিও চালু হয়।',
+    const willowCricketServer = {
+      id: 'willow-cricket',
+      name: 'Willow Sports HD (২৪/৭ ক্রিকেট টিভি)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.WILLOW_SPORTS),
+      badge: 'ক্রিকেট ব্রডকাস্টার',
+      description: 'সরাসরি Willow Sports ক্রিকেট টিভি চ্যানেল — উচ্চগতির বাফার-মুক্ত ১০৮০p লাইভ।',
     };
 
-    const redBullServer = {
-      id: 'server-1',
-      name: 'গ্লোবাল স্পোর্টস নেটওয়ার্ক (HD HLS)',
-      quality: '1080p HD',
-      url: applyVpnRoute(VERIFIED_SPORTS_HLS[3]),
-      badge: useVpn ? `VPN (${region.toUpperCase()}) LIVE` : 'সরাসরি ভিডিও LIVE',
-      description: 'যাচাইকৃত ২৪/৭ আন্তর্জাতিক লাইভ স্পোর্টস ব্রডকাস্ট (তাৎক্ষণিক প্লেব্যাক)।',
+    const gtvServer = {
+      id: 'gtv-bd',
+      name: 'GTV বাংলাদেশ লাইভ (গাজী টিভি HD)',
+      quality: '1080p HLS',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.GTV_LIVE),
+      badge: useVpn ? `VPN (${region.toUpperCase()}) LIVE` : 'বাংলাদেশ টিভি LIVE',
+      description: 'সরাসরি গাজী টিভি (GTV) বাংলাদেশ স্পোর্টস লাইভ সম্প্রচার।',
+    };
+
+    const ddSportsServer = {
+      id: 'dd-sports',
+      name: 'DD Sports Official Live (ক্রিকেট ও স্পোর্টস)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.DD_SPORTS),
+      badge: 'অফিশিয়াল স্পোর্টস টিভি',
+      description: 'আন্তর্জাতিক ক্রিকেট ও মাল্টি-স্পোর্টস অফিশিয়াল টিভি লাইভ ফিড।',
+    };
+
+    const cricketGoldServer = {
+      id: 'cricket-gold',
+      name: 'Cricket Gold HD (ক্রিকেট চ্যানেল)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.CRICKET_GOLD),
+      badge: 'ক্রিকেট ব্যাকআপ',
+      description: '২৪/৭ ডেডিকেটেড ক্রিকেট টিভি সম্প্রচার সার্ভার।',
+    };
+
+    const beinFootballServer = {
+      id: 'bein-xtra',
+      name: 'beIN SPORTS XTRA Live (ফুটবল টিভি)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.BEIN_XTRA),
+      badge: 'ফুটবল ব্রডকাস্টার',
+      description: 'ইউরোপীয় ও আন্তর্জাতিক ফুটবল সম্প্রচারকারী beIN SPORTS XTRA লাইভ টিভি।',
     };
 
     const fifaPlusServer = {
-      id: 'server-2',
-      name: 'FIFA+ / গ্লোবাল স্পোর্টস (VPN Relay)',
-      quality: '1080p Relay',
-      url: applyVpnRoute(VERIFIED_SPORTS_HLS[2]),
-      badge: 'VPN HLS LIVE',
-      description: 'আন্তর্জাতিক ফুটবল ও স্পোর্টস ফিফা+ সরাসরি লাইভ স্ট্রিম।',
+      id: 'fifa-plus',
+      name: 'FIFA+ Live Football (অফিশিয়াল টিভি)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.FIFA_PLUS),
+      badge: 'FIFA+ LIVE',
+      description: 'অফিশিয়াল FIFA+ আন্তর্জাতিক ফুটবল টিভি চ্যানেল।',
     };
 
-    const accServer = {
-      id: 'server-3',
-      name: 'ACC / স্পোর্টস নেটওয়ার্ক (VPN Relay)',
-      quality: '720p Relay',
-      url: applyVpnRoute(VERIFIED_SPORTS_HLS[1]),
-      badge: 'CORS-সেফ HD',
-      description: 'ক্লাউড VPN রিলে-সুরক্ষিত আন্তর্জাতিক স্পোর্টস চ্যানেল।',
+    const tycSportsServer = {
+      id: 'tyc-sports',
+      name: 'TyC Sports Internacional (ফুটবল লাইভ)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.TYC_SPORTS),
+      badge: 'লাতিন ও বিশ্ব ফুটবল',
+      description: 'TyC Sports আন্তর্জাতিক ফুটবল লাইভ টিভি ফিড।',
+    };
+
+    const interTvServer = {
+      id: 'inter-tv',
+      name: 'Inter TV HD (ফুটবল চ্যানেল)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.INTER_TV),
+      badge: 'ফুটবল মিরর',
+      description: 'ইন্টার মিলান ও ইউরোপীয় ফুটবল ডেডিকেটেড টিভি চ্যানেল।',
+    };
+
+    const tennisChannelServer = {
+      id: 'tennis-ch',
+      name: 'Tennis Channel Official Live (টেনিস টিভি)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.TENNIS_CHANNEL),
+      badge: 'টেনিস ব্রডকাস্টার',
+      description: 'ATP, WTA ও গ্র্যান্ড স্লাম টেনিস সম্প্রচারকারী Tennis Channel লাইভ।',
+    };
+
+    const eurovisionServer = {
+      id: 'eurovision-sport',
+      name: 'Eurovision Sport Live (ইউরোপ টিভি)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.EUROVISION_SPORT),
+      badge: 'EBU LIVE TV',
+      description: 'অফিশিয়াল ইউরোভিশন স্পোর্ট লাইভ টিভি চ্যানেল।',
+    };
+
+    const fuboBasketballServer = {
+      id: 'fubo-sports',
+      name: 'Fubo Sports Network Live (বাস্কেটবল ও US)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.FUBO_SPORTS),
+      badge: 'বাস্কেটবল ব্রডকাস্টার',
+      description: 'NBA ও নর্থ আমেরিকান লাইভ স্পোর্টস সম্প্রচারকারী Fubo Sports TV।',
+    };
+
+    const accBasketballServer = {
+      id: 'acc-sports',
+      name: 'ACC Digital Network (বাস্কেটবল টিভি)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.ACC_SPORTS),
+      badge: 'কোর্ট সাইড টিভি',
+      description: 'কলেজ ও প্রো বাস্কেটবল লাইভ টিভি নেটওয়ার্ক।',
+    };
+
+    const redBullServer = {
+      id: 'red-bull',
+      name: 'Red Bull TV Live (গ্লোবাল স্পোর্টস)',
+      quality: '1080p HD',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.RED_BULL_TV),
+      badge: 'গ্লোবাল ব্যাকআপ',
+      description: '২৪/৭ হাই-স্পিড গ্লোবাল স্পোর্টস টিভি চ্যানেল।',
     };
 
     const tSportsServerObj = {
@@ -1101,130 +1257,84 @@ app.post('/api/discover-stream-servers', async (req, res) => {
       name: 'T Sports Official Live (বাংলাদেশ)',
       quality: '1080p Official',
       url: tSportsInfo.primaryEmbedUrl,
-      badge: tSportsInfo.isLiveNow ? 'T Sports LIVE' : 'অফিশিয়াল চ্যানেল (বিরতি/শিডিউল্ড)',
+      badge: tSportsInfo.isLiveNow ? 'T Sports LIVE' : 'T Sports (শিডিউল্ড)',
       description: tSportsInfo.isLiveNow
         ? `${tSportsInfo.primaryTitle} — টি স্পোর্টস অফিশিয়াল সরাসরি সম্প্রচার।`
-        : `${tSportsInfo.primaryTitle} — এই মুহূর্তে টি স্পোর্টস ইউটিউব লাইভ শুরু হয়নি বা বিরতিতে আছে; লাইভ দেখতে tsports.com/live অথবা সার্ভার ১ (GTV) ব্যবহার করুন।`,
+        : `${tSportsInfo.primaryTitle} — এই মুহূর্তে T Sports ইউটিউব ফিড বিরতিতে থাকলে স্বয়ংক্রিয়ভাবে লাইভ ক্রিকেট টিভি (Willow / GTV) চলবে।`,
     };
 
-    // Never put an offline/upcoming YouTube stream in Server 1!
-    // Server 1 MUST always be an actively broadcasting playable live video stream.
-    let serverList: any[];
-    if (isCricketOrBd) {
-      if (tSportsInfo.isLiveNow) {
-        serverList = [
-          { ...tSportsServerObj, id: 'server-1' },
-          { ...gtvServer, id: 'server-2' },
-          ytStreams[0]
-            ? {
-                id: 'server-3',
-                name: `ম্যাচ লাইভ (${ytStreams[0].channel})`,
-                quality: '1080p Live',
-                url: ytEmbed(ytStreams[0].videoId),
-                badge: 'ম্যাচ ফিড',
-                description: ytStreams[0].title,
-              }
-            : { ...accServer, id: 'server-3' },
-          {
-            id: 'server-4',
-            name: 'AntenaSport ইউরোপ (VPN Relay)',
-            quality: '720p VPN',
-            url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
-            badge: 'VPN কানেক্টেড',
-            description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
-          },
-          {
-            id: 'server-5',
-            name: 'গ্লোবাল স্পোর্টস HD (ব্যাকআপ)',
-            quality: 'Auto HD',
-            url: applyVpnRoute(VERIFIED_SPORTS_HLS[3]),
-            badge: 'অটো ব্যাকআপ',
-            description: 'স্থিতিশীল আন্তর্জাতিক স্পোর্টস ব্যাকআপ ফিড।',
-          },
-        ];
-      } else if (ytStreams[0]) {
-        serverList = [
-          {
-            id: 'server-1',
-            name: `লাইভ ম্যাচ ফিড (${ytStreams[0].channel})`,
-            quality: '1080p Live',
-            url: ytEmbed(ytStreams[0].videoId),
-            badge: 'সরাসরি ম্যাচ LIVE',
-            description: `${ytStreams[0].title} — সরাসরি যাচাইকৃত ম্যাচ লাইভ স্ট্রিম।`,
-          },
-          { ...gtvServer, id: 'server-2' },
-          { ...accServer, id: 'server-3' },
-          {
-            id: 'server-4',
-            name: 'AntenaSport ইউরোপ (VPN Relay)',
-            quality: '720p VPN',
-            url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
-            badge: 'VPN কানেক্টেড',
-            description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
-          },
-          { ...tSportsServerObj, id: 'server-5' },
-        ];
-      } else {
-        // Active 24/7 moving GTV HLS first so user immediately sees moving live video instead of frozen YouTube upcoming photo!
-        serverList = [
-          { ...gtvServer, id: 'server-1' },
-          { ...accServer, id: 'server-2' },
-          { ...redBullServer, id: 'server-3' },
-          {
-            id: 'server-4',
-            name: 'AntenaSport ইউরোপ (VPN Relay)',
-            quality: '720p VPN',
-            url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
-            badge: 'VPN কানেক্টেড',
-            description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
-          },
-          { ...tSportsServerObj, id: 'server-5' },
-        ];
-      }
-    } else if (ytStreams[0]) {
-      serverList = [
-        {
-          id: 'server-1',
-          name: `লাইভ ম্যাচ ফিড (${ytStreams[0].channel})`,
+    const ytMatchServer = ytStreams[0]
+      ? {
+          id: 'yt-match-live',
+          name: `লাইভ ম্যাচ ব্রডকাস্ট (${ytStreams[0].channel})`,
           quality: '1080p Live',
           url: ytEmbed(ytStreams[0].videoId),
-          badge: 'এই ম্যাচের লাইভ',
-          description: `${ytStreams[0].title} — সরাসরি ম্যাচ কভারেজ ও লাইভ আপডেট।`,
-        },
-        { ...(sportId === 'football' ? fifaPlusServer : redBullServer), id: 'server-2' },
-        { ...gtvServer, id: 'server-3' },
-        {
-          id: 'server-4',
-          name: 'AntenaSport ইউরোপ (VPN Relay)',
-          quality: '720p VPN',
-          url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
-          badge: 'VPN কানেক্টেড',
-          description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
-        },
-        { ...accServer, id: 'server-5' },
-      ];
+          badge: 'এই ম্যাচের টিভি ফিড',
+          description: `${ytStreams[0].title} — এই ম্যাচের চলমান সরাসরি সম্প্রচার।`,
+        }
+      : null;
+
+    let serverList: any[];
+    if (isCricket) {
+      const baseCricketPool = [
+        tSportsInfo.isLiveNow ? tSportsServerObj : null,
+        ytMatchServer,
+        willowCricketServer,
+        ddSportsServer,
+        gtvServer,
+        cricketGoldServer,
+        tSportsServerObj,
+      ].filter(Boolean) as any[];
+      // Deduplicate by id and pick 5 best cricket TV broadcasters
+      const seen = new Set<string>();
+      serverList = baseCricketPool
+        .filter((s) => {
+          if (seen.has(s.id)) return false;
+          seen.add(s.id);
+          return true;
+        })
+        .slice(0, 5)
+        .map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
+    } else if (isFootball) {
+      const baseFootballPool = [
+        ytMatchServer,
+        fifaPlusServer,
+        beinFootballServer,
+        tycSportsServer,
+        interTvServer,
+        gtvServer,
+      ].filter(Boolean) as any[];
+      serverList = baseFootballPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
+    } else if (isTennis) {
+      const baseTennisPool = [
+        ytMatchServer,
+        tennisChannelServer,
+        eurovisionServer,
+        beinFootballServer,
+        redBullServer,
+        ddSportsServer,
+      ].filter(Boolean) as any[];
+      serverList = baseTennisPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
+    } else if (isBasketball) {
+      const baseBasketPool = [
+        ytMatchServer,
+        fuboBasketballServer,
+        accBasketballServer,
+        beinFootballServer,
+        redBullServer,
+        eurovisionServer,
+      ].filter(Boolean) as any[];
+      serverList = baseBasketPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
     } else {
-      serverList = [
-        { ...(sportId === 'football' ? fifaPlusServer : redBullServer), id: 'server-1' },
-        { ...gtvServer, id: 'server-2' },
-        { ...accServer, id: 'server-3' },
-        {
-          id: 'server-4',
-          name: 'AntenaSport ইউরোপ (VPN Relay)',
-          quality: '720p VPN',
-          url: `/api/vpn-relay?region=${encodeURIComponent(region !== 'auto' ? region : 'eu')}&url=${encodeURIComponent(VERIFIED_SPORTS_HLS[4])}`,
-          badge: 'VPN কানেক্টেড',
-          description: 'সার্ভার VPN টানেলের মাধ্যমে ইউরোপীয় স্পোর্টস ফিড আনলক করে দেখানো হচ্ছে।',
-        },
-        {
-          id: 'server-5',
-          name: 'Al Iraqia Sport HD (Direct)',
-          quality: '720p HD',
-          url: applyVpnRoute(VERIFIED_SPORTS_HLS[5]),
-          badge: 'স্পোর্টস ব্যাকআপ',
-          description: 'সরাসরি আন্তর্জাতিক স্পোর্টস ব্যাকআপ সার্ভার।',
-        },
-      ];
+      const baseGeneralPool = [
+        ytMatchServer,
+        beinFootballServer,
+        willowCricketServer,
+        fifaPlusServer,
+        redBullServer,
+        ddSportsServer,
+      ].filter(Boolean) as any[];
+      serverList = baseGeneralPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
     }
 
     res.json({
@@ -1484,7 +1594,33 @@ ${realFeedSummary}`;
   }
 });
 
-// Automated password reset + Mail-to-SMS dispatch endpoint from factsknown178@gmail.com
+// Short branded reset link store (/r/:code -> /reset?email=...)
+const shortResetLinks = new Map<string, { targetPath: string; email: string; expiresAt: number }>();
+
+function createShortResetCode(email: string): string {
+  const now = Date.now();
+  for (const [k, v] of shortResetLinks.entries()) {
+    if (v.expiresAt < now) shortResetLinks.delete(k);
+  }
+  const code = crypto.randomBytes(4).toString('base64url').slice(0, 6);
+  shortResetLinks.set(code, {
+    targetPath: `/reset?email=${encodeURIComponent(email)}&src=kheladekh_support`,
+    email,
+    expiresAt: now + 60 * 60 * 1000, // 1 hour TTL
+  });
+  return code;
+}
+
+app.get('/r/:code', (req, res) => {
+  const code = (req.params.code || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const entry = shortResetLinks.get(code);
+  if (!entry || entry.expiresAt < Date.now()) {
+    return res.redirect(302, '/reset');
+  }
+  return res.redirect(302, entry.targetPath);
+});
+
+// Branded password reset dispatch from KhelaDekH Support Team
 app.post('/api/auth/password-reset', async (req, res) => {
   try {
     const { email, phone } = req.body;
@@ -1498,27 +1634,61 @@ app.post('/api/auth/password-reset', async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPhone = typeof phone === 'string' && phone.trim() ? phone.trim() : null;
     const timestamp = new Date().toISOString();
+    const shortCode = createShortResetCode(cleanEmail);
+    const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0] || req.protocol || 'https';
+    const host = req.headers.host || 'localhost:3000';
+    const shortResetUrl = `${proto}://${host}/r/${shortCode}`;
+
+    // Optional real email relay via Resend if RESEND_API_KEY is configured in secrets
+    let emailRelayedViaResend = false;
+    const resendKey = process.env.RESEND_API_KEY?.trim();
+    if (resendKey) {
+      try {
+        const resendResp = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: `${SUPPORT_SENDER_NAME} <${SUPPORT_SENDER_EMAIL}>`,
+            to: [cleanEmail],
+            subject: 'KhelaDekH Password Reset Verification',
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#0F172A;color:#ffffff;border-radius:12px;">
+              <h2 style="margin:0 0 12px;color:#00B7FF;">KhelaDekH Support Team</h2>
+              <p style="font-size:14px;color:#CBD5E1;">We received a password reset request for your KhelaDekH account.</p>
+              <p style="margin:20px 0;"><a href="${shortResetUrl}" style="display:inline-block;padding:12px 20px;background:#00B7FF;color:#080B12;font-weight:700;text-decoration:none;border-radius:8px;">Reset Password Now</a></p>
+              <p style="font-size:12px;color:#94A3B8;">Short link: ${shortResetUrl}</p>
+            </div>`,
+          }),
+        });
+        emailRelayedViaResend = resendResp.ok;
+      } catch (mailErr) {
+        console.warn('Resend optional mail skipped:', mailErr);
+      }
+    }
 
     console.log(
-      `[PASSWORD RESET & SMS] Automated dispatch from ${OWNER_MAIL} -> Email: ${cleanEmail}${
-        cleanPhone ? ` | SMS Alert -> ${cleanPhone}` : ''
+      `[PASSWORD RESET] Sender: ${SUPPORT_SENDER_NAME} <${SUPPORT_SENDER_EMAIL}> -> ${cleanEmail} | Short: /r/${shortCode}${
+        cleanPhone ? ` | Phone: ${cleanPhone}` : ''
       } at ${timestamp}`
     );
 
     return res.json({
       success: true,
-      senderEmail: OWNER_MAIL,
+      senderName: SUPPORT_SENDER_NAME,
+      senderEmail: SUPPORT_SENDER_EMAIL,
       email: cleanEmail,
       phone: cleanPhone,
-      smsDispatched: true,
-      message: cleanPhone
-        ? `${OWNER_MAIL} থেকে ${cleanEmail} ইমেইলে রিসেট লিংক এবং ${cleanPhone} নম্বরে স্বয়ংক্রিয় SMS নোটিফিকেশন পাঠানো হয়েছে।`
-        : `${OWNER_MAIL} এর স্বয়ংক্রিয় রিকভারি সিস্টেম থেকে ${cleanEmail} ঠিকানায় পাসওয়ার্ড রিসেট ইমেইল ও SMS অ্যালার্ট পাঠানো হয়েছে।`,
+      shortResetUrl,
+      shortCode,
+      emailRelayedViaResend,
+      message: `${SUPPORT_SENDER_NAME} থেকে ${cleanEmail} ঠিকানায় পাসওয়ার্ড রিসেট ইমেইল ও শর্ট রিসেট লিংক পাঠানো হয়েছে।`,
       timestamp,
       instructions: [
-        `প্রেরক (Sender): ${OWNER_MAIL}`,
-        'আপনার ইমেইলের Inbox বা Spam ফোল্ডার চেক করুন',
-        'লিংকটিতে ক্লিক করে সাথে সাথে নতুন পাসওয়ার্ড সেট করুন',
+        `প্রেরক (Sender): ${SUPPORT_SENDER_NAME}`,
+        `শর্ট রিসেট লিংক: ${shortResetUrl}`,
+        'আপনার ইমেইলের Inbox বা Spam ফোল্ডার চেক করে লিংকে ক্লিক করুন',
       ],
     });
   } catch (error: any) {

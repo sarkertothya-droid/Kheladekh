@@ -122,6 +122,8 @@ export interface UserProfile {
   uid: string;
   displayName: string;
   email: string;
+  phoneNumber?: string;
+  phoneVerified?: boolean;
   photoURL?: string;
   favoriteSports: string[];
   favoriteTeams: string[];
@@ -144,7 +146,7 @@ export interface ContactMessage {
 
 export interface PreRollAdConfig {
   enabled: boolean;
-  durationSeconds: number; // default 12
+  durationSeconds: number; // default 10
   frequencyHours: number; // default 12
   title: string;
   description: string;
@@ -152,6 +154,22 @@ export interface PreRollAdConfig {
   imageUrl?: string;
   targetUrl: string;
   ctaText: string;
+}
+
+export interface AdControlConfig {
+  adsEnabled: boolean;
+  bannerEnabled: boolean;
+  nativeEnabled: boolean;
+  smartlinkUrl: string;
+  bannerImageUrl?: string;
+  bannerTitle?: string;
+  bannerSubtitle?: string;
+  bannerCta?: string;
+  nativeTitle?: string;
+  nativeDescription?: string;
+  nativeImageUrl?: string;
+  nativeTargetUrl?: string;
+  nativeCta?: string;
 }
 
 export interface SourceAppConfig {
@@ -178,6 +196,7 @@ export interface SiteSettings {
   adFreeMode?: boolean;
   sourceAppConfig?: SourceAppConfig;
   preRollAd?: PreRollAdConfig;
+  adControl?: AdControlConfig;
 }
 
 export interface AuditLog {

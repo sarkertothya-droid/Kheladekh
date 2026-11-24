@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   collection,
   deleteDoc,
@@ -276,15 +276,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canWriteAdminCollections =
     user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  // Automated Real-Time Sports Feed Sync (updates UI immediately for all users!)
-  const syncLiveSportsFromGoogle = async (silent = true) => {
+  const canWriteAdminRef = useRef(canWriteAdminCollections);
+  const vpnModeRef = useRef(vpnMode);
+  const vpnRegionRef = useRef(vpnRegion);
+  const syncingRef = useRef(false);
+
+  useEffect(() => {
+    canWriteAdminRef.current = canWriteAdminCollections;
+  }, [canWriteAdminCollections]);
+
+  useEffect(() => {
+    vpnModeRef.current = vpnMode;
+  }, [vpnMode]);
+
+  useEffect(() => {
+    vpnRegionRef.current = vpnRegion;
+  }, [vpnRegion]);
+
+  // Automated Real-Time Sports Feed Sync (runs every 60s automatically across BBC, Cricbuzz, ESPN & Google)
+  const syncLiveSportsFromGoogle = useCallback(async (silent = true) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     try {
       setAutoSyncing(true);
       setNextSyncSeconds(AUTO_SYNC_INTERVAL_SEC);
+      const canWrite = canWriteAdminRef.current;
       const res = await fetch(`/api/sports/auto-feed${silent ? '' : '?force=true'}`, {
         headers: {
-          'X-KhelaDekH-VPN-Mode': vpnMode ? 'enabled' : 'standard',
-          'X-KhelaDekH-VPN-Region': vpnRegion,
+          'X-KhelaDekH-VPN-Mode': vpnModeRef.current ? 'enabled' : 'standard',
+          'X-KhelaDekH-VPN-Region': vpnRegionRef.current,
         },
       });
       if (!res.ok) throw new Error('Auto feed request failed');
@@ -331,7 +351,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               captainPhotoUrl: resolvedCaps.teamACaptainPhoto,
             };
             syncedTeams.push(teamAObj);
-            if (canWriteAdminCollections && tAId) {
+            if (canWrite && tAId) {
               setDoc(doc(db, 'teams', tAId), teamAObj, { merge: true }).catch(() => {});
             }
           }
@@ -349,7 +369,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               captainPhotoUrl: resolvedCaps.teamBCaptainPhoto,
             };
             syncedTeams.push(teamBObj);
-            if (canWriteAdminCollections && tBId) {
+            if (canWrite && tBId) {
               setDoc(doc(db, 'teams', tBId), teamBObj, { merge: true }).catch(() => {});
             }
           }
@@ -364,7 +384,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             country: 'International',
           };
           syncedComps.push(compObj);
-          if (canWriteAdminCollections && compId) {
+          if (canWrite && compId) {
             setDoc(doc(db, 'competitions', compId), compObj, { merge: true }).catch(() => {});
           }
 
@@ -373,10 +393,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             item.authorizedViewingUrl && !isCartoonStream(item.authorizedViewingUrl)
               ? item.authorizedViewingUrl
               : sportKey === 'cricket'
-              ? VERIFIED_SPORTS_STREAMS.GTV_LIVE
+              ? VERIFIED_SPORTS_STREAMS.WILLOW_SPORTS
               : sportKey === 'football'
-              ? VERIFIED_SPORTS_STREAMS.FIFA_PLUS
-              : VERIFIED_SPORTS_STREAMS.ACC_SPORTS;
+              ? VERIFIED_SPORTS_STREAMS.BEIN_XTRA
+              : sportKey === 'tennis'
+              ? VERIFIED_SPORTS_STREAMS.TENNIS_CHANNEL
+              : sportKey === 'basketball'
+              ? VERIFIED_SPORTS_STREAMS.FUBO_SPORTS
+              : VERIFIED_SPORTS_STREAMS.FIFA_PLUS;
 
           const evObj: SportEvent = {
             id: evId,
@@ -415,7 +439,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           syncedEvents.push(evObj);
-          if (canWriteAdminCollections && evId) {
+          if (canWrite && evId) {
             setDoc(doc(db, 'events', evId), evObj, { merge: true }).catch(() => {});
           }
         }
@@ -439,9 +463,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (syncedEvents.length > 0) {
+          const freshIds = new Set(syncedEvents.map((e) => e.id));
           setEvents((prev) => {
             const map = new Map<string, SportEvent>();
-            // Preserve only custom manual admin-created events (never legacy fake fixtures)
+            const nowMs = Date.now();
+            // Preserve custom admin-created events (and auto-transition their status if time elapsed)
             prev.forEach((ev) => {
               if (
                 !isLegacyFakeEventId(ev.id) &&
@@ -449,7 +475,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 !ev.id.startsWith('cb-') &&
                 !ev.id.startsWith('espn-')
               ) {
-                map.set(ev.id, ev);
+                let updatedEv = ev;
+                if (ev.eventDate && ev.eventTime && /^\d{2}:\d{2}/.test(ev.eventTime)) {
+                  const startMs = new Date(`${ev.eventDate}T${ev.eventTime}:00Z`).getTime();
+                  if (!Number.isNaN(startMs)) {
+                    const diffMin = (nowMs - startMs) / 60000;
+                    if (diffMin >= 0 && diffMin <= 240 && ev.status === 'UPCOMING') {
+                      updatedEv = { ...ev, status: 'LIVE', featured: true };
+                    } else if (diffMin > 240 && ev.status === 'LIVE') {
+                      updatedEv = { ...ev, status: 'FINISHED', featured: false };
+                    }
+                  }
+                }
+                map.set(ev.id, updatedEv);
+              } else if (canWrite && !freshIds.has(ev.id) && (ev.id.startsWith('bbc-') || ev.id.startsWith('cb-') || ev.id.startsWith('espn-'))) {
+                deleteDoc(doc(db, 'events', ev.id)).catch(() => {});
               }
             });
             syncedEvents.forEach((ev) => map.set(ev.id, ev));
@@ -467,26 +507,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err) {
       if (!silent) console.warn('Auto-sync sports failed:', err);
     } finally {
+      syncingRef.current = false;
       setAutoSyncing(false);
     }
-  };
-
-  // Real-time 1-second countdown ticker for continuous 1-minute auto-sync
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNextSyncSeconds((prev) => {
-        if (prev <= 1) {
-          syncLiveSportsFromGoogle(true);
-          return AUTO_SYNC_INTERVAL_SEC;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
   }, []);
 
-  // Clean up any stale legacy mock events from Firestore when admin is signed in
+  // Real-time 1-second countdown ticker + automatic 60s sync & instant tab-focus refresh
+  useEffect(() => {
+    const countdownTimer = setInterval(() => {
+      setNextSyncSeconds((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void syncLiveSportsFromGoogle(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(countdownTimer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [syncLiveSportsFromGoogle]);
+
+  useEffect(() => {
+    if (nextSyncSeconds === 0) {
+      void syncLiveSportsFromGoogle(true);
+    }
+  }, [nextSyncSeconds, syncLiveSportsFromGoogle]);
+
+  // Clean up stale legacy mock events & expired custom statuses in Firestore when admin is signed in
   useEffect(() => {
     if (!canWriteAdminCollections) return;
     const todayStr = new Date().toISOString().split('T')[0];

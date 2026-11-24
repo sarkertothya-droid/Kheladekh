@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { LogOut, Check, ShieldCheck, Globe } from 'lucide-react';
+import { LogOut, Check, ShieldCheck, Globe, Phone, Mail, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { EventCard } from '../components/EventCard';
@@ -15,7 +15,16 @@ const VPN_REGION_OPTIONS: { value: VpnRegion; label: string }[] = [
 ];
 
 export const ProfilePage: React.FC = () => {
-  const { user, profile, loading, logout } = useAuth();
+  const {
+    user,
+    profile,
+    loading,
+    logout,
+    sendPhoneOtp,
+    confirmPhoneOtp,
+    resetPhoneOtpState,
+    resendEmailVerification,
+  } = useAuth();
   const {
     sports,
     teams,
@@ -32,6 +41,13 @@ export const ProfilePage: React.FC = () => {
   const [nameInput, setNameInput] = useState(profile?.displayName || '');
   const [savedNotice, setSavedNotice] = useState(false);
   const [vpnSavedNotice, setVpnSavedNotice] = useState(false);
+
+  const [phoneInput, setPhoneInput] = useState(profile?.phoneNumber || '+880');
+  const [phoneOtpCode, setPhoneOtpCode] = useState('');
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneMsg, setPhoneMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [emailVerifyMsg, setEmailVerifyMsg] = useState<string | null>(null);
 
   if (loading) {
     return <div className="h-64 rounded-2xl bg-[#151E2B] animate-pulse" />;
@@ -63,6 +79,40 @@ export const ProfilePage: React.FC = () => {
     setTimeout(() => setVpnSavedNotice(false), 2500);
   };
 
+  const handleSendPhoneLinkOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPhoneMsg(null);
+    setPhoneBusy(true);
+    try {
+      await sendPhoneOtp(phoneInput.trim(), 'profile-phone-recaptcha', 'link');
+      setPhoneOtpSent(true);
+      setPhoneMsg({ type: 'ok', text: 'আপনার মোবাইল নম্বরে ৬-ডিজিট SMS কোড পাঠানো হয়েছে।' });
+    } catch (err: any) {
+      setPhoneMsg({
+        type: 'err',
+        text: err?.message || 'ফোন ভেরিফিকেশন কোড পাঠানো যায়নি। Firebase Console-এ Phone Auth চালু আছে কিনা দেখুন।',
+      });
+    } finally {
+      setPhoneBusy(false);
+    }
+  };
+
+  const handleConfirmPhoneLinkOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPhoneMsg(null);
+    setPhoneBusy(true);
+    try {
+      await confirmPhoneOtp(phoneOtpCode);
+      setPhoneOtpSent(false);
+      setPhoneOtpCode('');
+      setPhoneMsg({ type: 'ok', text: 'আপনার মোবাইল নম্বর সফলভাবে ভেরিফাই হয়েছে!' });
+    } catch (err: any) {
+      setPhoneMsg({ type: 'err', text: err?.message || 'ভুল OTP কোড। আবার চেষ্টা করুন।' });
+    } finally {
+      setPhoneBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-10 max-w-4xl mx-auto">
       <div className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -70,7 +120,9 @@ export const ProfilePage: React.FC = () => {
           <h1 className="font-display text-2xl font-extrabold text-white">
             {profile.displayName}
           </h1>
-          <p className="text-xs text-[#A5B1C2] mt-1">{profile.email}</p>
+          <p className="text-xs text-[#A5B1C2] mt-1">
+            {profile.email || profile.phoneNumber || 'Anonymous Guest Session'}
+          </p>
         </div>
         <button
           type="button"
@@ -82,29 +134,154 @@ export const ProfilePage: React.FC = () => {
         </button>
       </div>
 
-      {/* Account Settings */}
-      <section className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-4">
-        <h2 className="font-display text-lg font-bold text-white">Account Settings</h2>
-        <form onSubmit={handleNameSave} className="flex flex-col sm:flex-row gap-3 max-w-md">
-          <input
-            type="text"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-            placeholder="Display name"
-            className="flex-1 h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00B7FF]"
-          />
-          <button
-            type="submit"
-            className="min-h-[44px] px-5 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold hover:bg-[#33C5FF] transition-colors"
-          >
-            Save Name
-          </button>
-        </form>
-        {savedNotice && (
-          <p className="text-xs text-[#16D98A] inline-flex items-center gap-1">
-            <Check className="w-3.5 h-3.5" /> Profile updated
-          </p>
-        )}
+      {/* Account Settings + Phone & Email Verification */}
+      <section className="bg-[#151E2B] rounded-2xl border border-white/10 p-6 space-y-6">
+        <div className="space-y-4">
+          <h2 className="font-display text-lg font-bold text-white">Account Settings</h2>
+          <form onSubmit={handleNameSave} className="flex flex-col sm:flex-row gap-3 max-w-md">
+            <input
+              type="text"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              placeholder="Display name"
+              className="flex-1 h-11 px-3 rounded-xl bg-[#101722] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00B7FF]"
+            />
+            <button
+              type="submit"
+              className="min-h-[44px] px-5 py-2 rounded-xl bg-[#00B7FF] text-[#080B12] text-xs font-bold hover:bg-[#33C5FF] transition-colors"
+            >
+              Save Name
+            </button>
+          </form>
+          {savedNotice && (
+            <p className="text-xs text-[#16D98A] inline-flex items-center gap-1">
+              <Check className="w-3.5 h-3.5" /> Profile updated
+            </p>
+          )}
+        </div>
+
+        {/* Email & Phone Verification Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-white/10">
+          {/* Email Verification Card */}
+          <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Mail className="w-4 h-4 text-[#00B7FF]" />
+                ইমেইল ভেরিফিকেশন
+              </span>
+              {user.emailVerified ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#16D98A]">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold text-amber-400">Pending</span>
+              )}
+            </div>
+            <p className="text-xs text-[#A5B1C2] font-mono break-all">
+              {profile.email || 'ইমেইল যুক্ত নেই'}
+            </p>
+            {profile.email && !user.emailVerified && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await resendEmailVerification();
+                    setEmailVerifyMsg('KhelaDekH Support Team থেকে ভেরিফিকেশন ইমেইল পাঠানো হয়েছে।');
+                  } catch (err: any) {
+                    setEmailVerifyMsg(err?.message || 'ভেরিফিকেশন ইমেইল পাঠানো যায়নি।');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-[#00B7FF]/15 border border-[#00B7FF]/30 text-[#00B7FF] text-[11px] font-bold hover:bg-[#00B7FF]/25"
+              >
+                ভেরিফিকেশন ইমেইল পাঠান
+              </button>
+            )}
+            {emailVerifyMsg && <p className="text-[11px] text-[#16D98A]">{emailVerifyMsg}</p>}
+          </div>
+
+          {/* Phone Number SMS Verification Card */}
+          <div className="p-4 rounded-xl bg-[#101722] border border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Phone className="w-4 h-4 text-[#16D98A]" />
+                ফোন নম্বর ভেরিফিকেশন (SMS OTP)
+              </span>
+              {profile.phoneVerified && profile.phoneNumber ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#16D98A]">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold text-[#A5B1C2]">Not linked</span>
+              )}
+            </div>
+
+            {profile.phoneVerified && profile.phoneNumber ? (
+              <p className="text-xs font-mono text-white">{profile.phoneNumber}</p>
+            ) : !phoneOtpSent ? (
+              <form onSubmit={handleSendPhoneLinkOtp} className="flex gap-2">
+                <input
+                  type="tel"
+                  required
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  placeholder="+88017XXXXXXXX"
+                  className="flex-1 h-9 px-3 rounded-lg bg-[#151E2B] border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-[#16D98A]"
+                />
+                <button
+                  type="submit"
+                  disabled={phoneBusy}
+                  className="h-9 px-3 rounded-lg bg-[#16D98A] text-[#080B12] text-[11px] font-bold disabled:opacity-50 shrink-0"
+                >
+                  {phoneBusy ? 'পাঠানো...' : 'OTP পাঠান'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleConfirmPhoneLinkOtp} className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={phoneOtpCode}
+                    onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="৬-ডিজিট কোড"
+                    className="flex-1 h-9 px-3 rounded-lg bg-[#151E2B] border border-[#00B7FF]/40 text-xs text-white font-mono tracking-widest text-center"
+                  />
+                  <button
+                    type="submit"
+                    disabled={phoneBusy}
+                    className="h-9 px-3 rounded-lg bg-[#00B7FF] text-[#080B12] text-[11px] font-bold disabled:opacity-50"
+                  >
+                    যাচাই
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhoneOtpSent(false);
+                    setPhoneOtpCode('');
+                    resetPhoneOtpState();
+                  }}
+                  className="text-[11px] text-[#00B7FF] hover:underline"
+                >
+                  নম্বর পরিবর্তন করুন
+                </button>
+              </form>
+            )}
+
+            {phoneMsg && (
+              <p
+                className={`text-[11px] flex items-center gap-1 ${
+                  phoneMsg.type === 'ok' ? 'text-[#16D98A]' : 'text-red-400'
+                }`}
+              >
+                {phoneMsg.type === 'err' && <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                <span>{phoneMsg.text}</span>
+              </p>
+            )}
+            <div id="profile-phone-recaptcha" />
+          </div>
+        </div>
       </section>
 
       {/* Streaming Network & VPN Mode */}

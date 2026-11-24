@@ -1,16 +1,24 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
+  ConfirmationResult,
+  RecaptchaVerifier,
   User,
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
+  linkWithPhoneNumber,
   onAuthStateChanged,
+  sendEmailVerification,
   sendPasswordResetEmail,
+  signInAnonymously,
   signInWithEmailAndPassword,
+  signInWithPhoneNumber,
   signInWithPopup,
   signOut,
   updateProfile,
+  verifyPasswordResetCode,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../services/firebase';
+import { auth, db, googleProvider } from '../services/firebase';
 import { UserProfile } from '../types';
 
 interface AuthContextType {
@@ -21,7 +29,14 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   registerWithEmail: (name: string, email: string, password: string) => Promise<void>;
+  signInAsGuest: () => Promise<void>;
+  sendPhoneOtp: (phoneNumber: string, recaptchaContainerId: string, mode?: 'signin' | 'link') => Promise<void>;
+  confirmPhoneOtp: (otpCode: string) => Promise<void>;
+  resetPhoneOtpState: () => void;
+  resendEmailVerification: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  verifyResetOobCode: (oobCode: string) => Promise<string>;
+  confirmNewPasswordWithCode: (oobCode: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -38,20 +53,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+  const phoneConfirmationRef = useRef<ConfirmationResult | null>(null);
+
+  const getActionCodeSettings = () => ({
+    url: `${window.location.origin}/reset`,
+    handleCodeInApp: false,
+  });
+
   // Helper to load or create Firestore profile
   const loadOrCreateProfile = async (firebaseUser: User) => {
+    const fallbackName =
+      firebaseUser.displayName ||
+      firebaseUser.email?.split('@')[0] ||
+      firebaseUser.phoneNumber ||
+      (firebaseUser.isAnonymous ? 'Guest Viewer' : 'KhelaDekH Member');
+
     try {
       const userRef = doc(db, 'users', firebaseUser.uid);
       const snap = await getDoc(userRef);
       if (snap.exists()) {
         const loaded = snap.data() as UserProfile;
-        setProfile(loaded);
-        localStorage.setItem(`kheladekh_profile_${firebaseUser.uid}`, JSON.stringify(loaded));
+        // Sync verified phone number if newly linked
+        if (firebaseUser.phoneNumber && (!loaded.phoneVerified || loaded.phoneNumber !== firebaseUser.phoneNumber)) {
+          const synced: UserProfile = {
+            ...loaded,
+            phoneNumber: firebaseUser.phoneNumber,
+            phoneVerified: true,
+          };
+          await setDoc(userRef, synced, { merge: true });
+          setProfile(synced);
+          localStorage.setItem(`kheladekh_profile_${firebaseUser.uid}`, JSON.stringify(synced));
+        } else {
+          setProfile(loaded);
+          localStorage.setItem(`kheladekh_profile_${firebaseUser.uid}`, JSON.stringify(loaded));
+        }
       } else {
         const newProfile: UserProfile = {
           uid: firebaseUser.uid,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Sports Fan',
+          displayName: fallbackName,
           email: firebaseUser.email || '',
+          phoneNumber: firebaseUser.phoneNumber || '',
+          phoneVerified: Boolean(firebaseUser.phoneNumber),
           photoURL: firebaseUser.photoURL || '',
           favoriteSports: ['football', 'cricket'],
           favoriteTeams: [],
@@ -81,8 +124,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         const fallbackProfile: UserProfile = {
           uid: firebaseUser.uid,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Sports Fan',
+          displayName: fallbackName,
           email: firebaseUser.email || '',
+          phoneNumber: firebaseUser.phoneNumber || '',
+          phoneVerified: Boolean(firebaseUser.phoneNumber),
           photoURL: firebaseUser.photoURL || '',
           favoriteSports: ['football', 'cricket'],
           favoriteTeams: [],
@@ -100,8 +145,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Check admin status (supports both Google sign-in and Email/Password sign-in)
-    const isOwnerEmail = firebaseUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    // Check admin status
+    const isOwnerEmail = Boolean(
+      firebaseUser.email && firebaseUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+    );
     if (isOwnerEmail) {
       setIsAdmin(true);
       try {
@@ -129,11 +176,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // 1. Listen to Firebase Auth state
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        localStorage.removeItem(STORAGE_USER_KEY); // Prefer active Firebase user
+        localStorage.removeItem(STORAGE_USER_KEY);
         try {
           await loadOrCreateProfile(firebaseUser);
         } catch (err) {
@@ -141,7 +187,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setLoading(false);
       } else {
-        // 2. Check if a local hybrid account session exists in localStorage
         const localActive = localStorage.getItem(STORAGE_USER_KEY);
         if (localActive) {
           try {
@@ -178,7 +223,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await signInWithEmailAndPassword(auth, cleanEmail, password);
     } catch (err: any) {
-      // If Firebase rejects with operation-not-allowed or user-not-found, check local saved accounts
       if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/user-not-found') {
         const rawAccounts = localStorage.getItem(STORAGE_ACCOUNTS_KEY);
         const accounts = rawAccounts ? JSON.parse(rawAccounts) : {};
@@ -195,46 +239,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           setUser(virtualUser);
           setProfile(saved.profile);
-          const isOwner = cleanEmail === ADMIN_EMAIL.toLowerCase();
-          setIsAdmin(isOwner);
-
+          setIsAdmin(cleanEmail === ADMIN_EMAIL.toLowerCase());
           localStorage.setItem(
             STORAGE_USER_KEY,
             JSON.stringify({ user: virtualUser, profile: saved.profile })
-          );
-          return;
-        }
-
-        // If it's the admin logging in with password but provider is disabled
-        if (cleanEmail === ADMIN_EMAIL.toLowerCase()) {
-          const adminVirtual = {
-            uid: 'admin_owner_' + btoa(cleanEmail).slice(0, 15),
-            email: cleanEmail,
-            displayName: 'Site Admin',
-            photoURL: '',
-            emailVerified: true,
-          } as unknown as User;
-
-          const adminProfile: UserProfile = {
-            uid: adminVirtual.uid,
-            displayName: 'Site Administrator',
-            email: cleanEmail,
-            photoURL: '',
-            favoriteSports: ['football', 'cricket'],
-            favoriteTeams: [],
-            savedEvents: [],
-            notificationPreferences: { eventReminders: true, newEvents: true, newsAlerts: true },
-            vpnMode: false,
-            vpnRegion: 'auto',
-            createdAt: new Date().toISOString(),
-          };
-
-          setUser(adminVirtual);
-          setProfile(adminProfile);
-          setIsAdmin(true);
-          localStorage.setItem(
-            STORAGE_USER_KEY,
-            JSON.stringify({ user: adminVirtual, profile: adminProfile })
           );
           return;
         }
@@ -250,13 +258,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       await updateProfile(cred.user, { displayName: cleanName });
+      try {
+        await sendEmailVerification(cred.user, getActionCodeSettings());
+      } catch {
+        // fallback if continue URL not yet allowlisted
+        sendEmailVerification(cred.user).catch(() => {});
+      }
       await loadOrCreateProfile(cred.user);
     } catch (err: any) {
-      // If Firebase Console has Email/Password provider disabled ('auth/operation-not-allowed')
-      // seamlessly register user in Hybrid Local Account mode so registration NEVER FAILS!
       if (err.code === 'auth/operation-not-allowed') {
-        console.warn('Firebase Email/Password provider disabled in console. Activating Hybrid Account mode.');
-
         const userUid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
         const virtualUser = {
           uid: userUid,
@@ -270,6 +280,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           uid: userUid,
           displayName: cleanName,
           email: cleanEmail,
+          phoneNumber: '',
+          phoneVerified: false,
           photoURL: '',
           favoriteSports: ['football', 'cricket'],
           favoriteTeams: [],
@@ -284,55 +296,174 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
         };
 
-        // Save account locally so user can log in again with the same credentials
         const rawAccounts = localStorage.getItem(STORAGE_ACCOUNTS_KEY);
         const accounts = rawAccounts ? JSON.parse(rawAccounts) : {};
         accounts[cleanEmail] = {
           uid: userUid,
           displayName: cleanName,
           email: cleanEmail,
-          password: password,
+          password,
           profile: newProfile,
           createdAt: new Date().toISOString(),
         };
         localStorage.setItem(STORAGE_ACCOUNTS_KEY, JSON.stringify(accounts));
 
-        // Set active user session
         setUser(virtualUser);
         setProfile(newProfile);
-
-        const isOwner = cleanEmail === ADMIN_EMAIL.toLowerCase();
-        setIsAdmin(isOwner);
-
+        setIsAdmin(cleanEmail === ADMIN_EMAIL.toLowerCase());
         localStorage.setItem(
           STORAGE_USER_KEY,
           JSON.stringify({ user: virtualUser, profile: newProfile })
         );
-
-        return; // Registration succeeded via Hybrid Account
+        return;
       }
-
-      // Re-throw if other errors like email-already-in-use or weak-password
       throw err;
+    }
+  };
+
+  const signInAsGuest = async () => {
+    try {
+      await signInAnonymously(auth);
+    } catch (err: any) {
+      if (err?.code === 'auth/operation-not-allowed' || err?.code === 'auth/admin-restricted-operation') {
+        const guestUid = 'guest_' + Date.now().toString(36);
+        const virtualUser = {
+          uid: guestUid,
+          email: '',
+          displayName: 'Guest Viewer',
+          isAnonymous: true,
+        } as unknown as User;
+        const guestProfile: UserProfile = {
+          uid: guestUid,
+          displayName: 'Guest Viewer',
+          email: '',
+          favoriteSports: ['cricket', 'football'],
+          favoriteTeams: [],
+          savedEvents: [],
+          notificationPreferences: {
+            eventReminders: true,
+            newEvents: false,
+            newsAlerts: false,
+          },
+          vpnMode: false,
+          vpnRegion: 'auto',
+          createdAt: new Date().toISOString(),
+        };
+        setUser(virtualUser);
+        setProfile(guestProfile);
+        setIsAdmin(false);
+        localStorage.setItem(
+          STORAGE_USER_KEY,
+          JSON.stringify({ user: virtualUser, profile: guestProfile })
+        );
+        return;
+      }
+      throw err;
+    }
+  };
+
+  const resetPhoneOtpState = () => {
+    phoneConfirmationRef.current = null;
+    if (recaptchaRef.current) {
+      try {
+        recaptchaRef.current.clear();
+      } catch {
+        // ignore
+      }
+      recaptchaRef.current = null;
+    }
+  };
+
+  const sendPhoneOtp = async (
+    phoneNumber: string,
+    recaptchaContainerId: string,
+    mode: 'signin' | 'link' = 'signin'
+  ) => {
+    const normalizedPhone = phoneNumber.replace(/[\s()-]/g, '').trim();
+    if (!/^\+\d{7,15}$/.test(normalizedPhone)) {
+      throw new Error('সঠিক আন্তর্জাতিক ফরম্যাটে নম্বর দিন (যেমন: +8801XXXXXXXXX)');
+    }
+
+    resetPhoneOtpState();
+
+    const verifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
+      size: 'invisible',
+    });
+    recaptchaRef.current = verifier;
+
+    if (mode === 'link' && auth.currentUser) {
+      const confirmation = await linkWithPhoneNumber(auth.currentUser, normalizedPhone, verifier);
+      phoneConfirmationRef.current = confirmation;
+    } else {
+      const confirmation = await signInWithPhoneNumber(auth, normalizedPhone, verifier);
+      phoneConfirmationRef.current = confirmation;
+    }
+  };
+
+  const confirmPhoneOtp = async (otpCode: string) => {
+    if (!phoneConfirmationRef.current) {
+      throw new Error('প্রথমে আপনার ফোন নম্বরে ভেরিফিকেশন কোড পাঠান।');
+    }
+    const cleanOtp = otpCode.trim();
+    if (!/^\d{6}$/.test(cleanOtp)) {
+      throw new Error('৬ ডিজিটের সঠিক SMS OTP কোড দিন।');
+    }
+    const cred = await phoneConfirmationRef.current.confirm(cleanOtp);
+    resetPhoneOtpState();
+    await loadOrCreateProfile(cred.user);
+  };
+
+  const resendEmailVerification = async () => {
+    if (!auth.currentUser) {
+      throw new Error('দয়া করে প্রথমে সাইন ইন করুন।');
+    }
+    try {
+      await sendEmailVerification(auth.currentUser, getActionCodeSettings());
+    } catch {
+      await sendEmailVerification(auth.currentUser);
     }
   };
 
   const resetPassword = async (email: string) => {
     const cleanEmail = email.trim().toLowerCase();
     try {
-      await sendPasswordResetEmail(auth, cleanEmail);
+      await sendPasswordResetEmail(auth, cleanEmail, getActionCodeSettings());
     } catch (err: any) {
-      console.warn('Firebase reset note:', err.code || err.message);
-      // Even if Firebase console restricts password reset, we allow graceful flow
-      if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/user-not-found') {
-        return; // Let user see success confirmation from server backend
+      if (
+        err?.code === 'auth/unauthorized-continue-uri' ||
+        err?.code === 'auth/invalid-continue-uri'
+      ) {
+        try {
+          await sendPasswordResetEmail(auth, cleanEmail);
+          return;
+        } catch (fallbackErr: any) {
+          if (
+            fallbackErr?.code === 'auth/operation-not-allowed' ||
+            fallbackErr?.code === 'auth/user-not-found'
+          ) {
+            return;
+          }
+          throw fallbackErr;
+        }
+      }
+      if (err?.code === 'auth/operation-not-allowed' || err?.code === 'auth/user-not-found') {
+        return;
       }
       throw err;
     }
   };
 
+  const verifyResetOobCode = async (oobCode: string) => {
+    return verifyPasswordResetCode(auth, oobCode);
+  };
+
+  const confirmNewPasswordWithCode = async (oobCode: string, newPassword: string) => {
+    await confirmPasswordReset(auth, oobCode, newPassword);
+  };
+
   const logout = async () => {
     localStorage.removeItem(STORAGE_USER_KEY);
+    resetPhoneOtpState();
     setUser(null);
     setProfile(null);
     setIsAdmin(false);
@@ -344,7 +475,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshProfile = async () => {
-    if (user) {
+    if (auth.currentUser) {
+      await loadOrCreateProfile(auth.currentUser);
+    } else if (user) {
       await loadOrCreateProfile(user);
     }
   };
@@ -359,7 +492,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signInWithGoogle,
         signInWithEmail,
         registerWithEmail,
+        signInAsGuest,
+        sendPhoneOtp,
+        confirmPhoneOtp,
+        resetPhoneOtpState,
+        resendEmailVerification,
         resetPassword,
+        verifyResetOobCode,
+        confirmNewPasswordWithCode,
         logout,
         refreshProfile,
       }}
