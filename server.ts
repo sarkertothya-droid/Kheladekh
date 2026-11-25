@@ -4,7 +4,6 @@ import { GoogleGenAI } from '@google/genai';
 import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
-import zlib from 'zlib';
 import net from 'net';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
@@ -100,11 +99,11 @@ const ai = hasGeminiKey
     })
   : null;
 
-// Verified 200 OK Live Sports-Only Broadcast TV Channels (Mapped by Sport)
+// Verified 200 OK Live Sports-Only Broadcast TV Channels (Segment-tested 200 OK)
 const SPORT_TV_CHANNELS = {
   GTV_LIVE:
     'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8',
-  WILLOW_SPORTS: 'https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8',
+  WILLOW_HD: 'https://tvsen5.aynaott.com/willowhd/index.m3u8',
   CRICKET_GOLD:
     'https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/manifest.m3u8',
   DD_SPORTS:
@@ -119,19 +118,22 @@ const SPORT_TV_CHANNELS = {
     'https://cdn-ue1-prod.tsv2.amagi.tv/linear/amg01444-tennischannelth-tennischannelnl-samsungnl/playlist.m3u8',
   EUROVISION_SPORT:
     'https://amg26268-amg26268c34-amgplt0018.playout.now3.amagi.tv/ts-us-e2-n1/playlist/amg26268-amg26268c34-amgplt0018/playlist.m3u8',
-  FUBO_SPORTS: 'https://dnf08l6u6uxnz.cloudfront.net/master.m3u8',
   ACC_SPORTS: 'https://raycom-accdn-firetv.amagi.tv/playlist.m3u8',
+  FIVE_PLUS:
+    'https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_plus/live.livx/playlist.m3u8',
+  FOX_SPORTS_NEWS:
+    'https://skynewsau-live-premium.akamaized.net/hls/live/2105307/foxsportsnews/live_1080p.m3u8',
   RED_BULL_TV: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',
 };
 
 const VERIFIED_SPORTS_HLS = [
-  SPORT_TV_CHANNELS.WILLOW_SPORTS,
   SPORT_TV_CHANNELS.GTV_LIVE,
   SPORT_TV_CHANNELS.DD_SPORTS,
+  SPORT_TV_CHANNELS.CRICKET_GOLD,
   SPORT_TV_CHANNELS.BEIN_XTRA,
   SPORT_TV_CHANNELS.FIFA_PLUS,
   SPORT_TV_CHANNELS.TENNIS_CHANNEL,
-  SPORT_TV_CHANNELS.FUBO_SPORTS,
+  SPORT_TV_CHANNELS.ACC_SPORTS,
   SPORT_TV_CHANNELS.RED_BULL_TV,
 ];
 
@@ -140,19 +142,29 @@ let cachedLiveFeed: any[] = [];
 let lastFetchTime = 0;
 let lastFeedSource = 'initializing';
 
-const NO_CORS_HLS_HOSTS = ['amagi.tv', 'wurl.com', 'antenaplay.ro', 'multistream.it', 'ncare.live'];
+const NO_CORS_HLS_HOSTS = [
+  'amagi.tv',
+  'wurl.com',
+  'antenaplay.ro',
+  'multistream.it',
+  'ncare.live',
+  'ekusheyserver.com',
+  'sofast.tv',
+  'aftermind.xyz',
+  'shariarsuvo.com',
+];
 function requiresCorsRelay(streamUrl: string): boolean {
   const lower = (streamUrl || '').toLowerCase();
-  return NO_CORS_HLS_HOSTS.some((host) => lower.includes(host));
+  return lower.startsWith('http://') || NO_CORS_HLS_HOSTS.some((host) => lower.includes(host));
 }
 
 function pickSportBroadcastUrl(sportId: string, idx: number): string {
   const key = (sportId || '').toLowerCase();
   if (key === 'cricket') {
+    if (idx === 0) return SPORT_TV_CHANNELS.GTV_LIVE;
     const cricketChannels = [
-      SPORT_TV_CHANNELS.WILLOW_SPORTS,
-      SPORT_TV_CHANNELS.DD_SPORTS,
       SPORT_TV_CHANNELS.GTV_LIVE,
+      SPORT_TV_CHANNELS.DD_SPORTS,
       SPORT_TV_CHANNELS.CRICKET_GOLD,
     ];
     return cricketChannels[idx % cricketChannels.length];
@@ -163,6 +175,7 @@ function pickSportBroadcastUrl(sportId: string, idx: number): string {
       SPORT_TV_CHANNELS.FIFA_PLUS,
       SPORT_TV_CHANNELS.TYC_SPORTS,
       SPORT_TV_CHANNELS.INTER_TV,
+      SPORT_TV_CHANNELS.GTV_LIVE,
     ];
     return footballChannels[idx % footballChannels.length];
   }
@@ -170,7 +183,7 @@ function pickSportBroadcastUrl(sportId: string, idx: number): string {
     return idx % 2 === 0 ? SPORT_TV_CHANNELS.TENNIS_CHANNEL : SPORT_TV_CHANNELS.EUROVISION_SPORT;
   }
   if (key === 'basketball') {
-    return idx % 2 === 0 ? SPORT_TV_CHANNELS.FUBO_SPORTS : SPORT_TV_CHANNELS.ACC_SPORTS;
+    return idx % 2 === 0 ? SPORT_TV_CHANNELS.ACC_SPORTS : SPORT_TV_CHANNELS.RED_BULL_TV;
   }
   return VERIFIED_SPORTS_HLS[idx % VERIFIED_SPORTS_HLS.length];
 }
@@ -566,8 +579,10 @@ const AD_AND_TRACKER_REGEX =
 
 function stripAdsFromM3u8Playlist(playlistText: string): { text: string; strippedCount: number } {
   const lines = playlistText.split('\n');
+  const isMediaPlaylist = playlistText.includes('#EXT-X-TARGETDURATION') || playlistText.includes('#EXTINF:');
   const cleanLines: string[] = [];
   let strippedCount = 0;
+  let keptMediaSegments = 0;
   let insideAdCue = false;
   let skipNextUriAfterAdMeta = false;
 
@@ -590,10 +605,10 @@ function stripAdsFromM3u8Playlist(playlistText: string): { text: string; strippe
       continue;
     }
 
-    // Look ahead if an EXTINF or URI points to a known ad server
+    // Drop explicit third-party ad tracker URIs, never drop all live broadcast segments
     if (/^#EXTINF:/i.test(trimmed)) {
       const nextLine = (lines[i + 1] || '').trim();
-      if (insideAdCue || (nextLine && AD_AND_TRACKER_REGEX.test(nextLine))) {
+      if (nextLine && AD_AND_TRACKER_REGEX.test(nextLine)) {
         skipNextUriAfterAdMeta = true;
         strippedCount += 1;
         continue;
@@ -601,14 +616,20 @@ function stripAdsFromM3u8Playlist(playlistText: string): { text: string; strippe
     }
 
     if (trimmed && !trimmed.startsWith('#')) {
-      if (skipNextUriAfterAdMeta || insideAdCue || AD_AND_TRACKER_REGEX.test(trimmed)) {
+      if (skipNextUriAfterAdMeta || AD_AND_TRACKER_REGEX.test(trimmed)) {
         skipNextUriAfterAdMeta = false;
         strippedCount += 1;
         continue;
       }
+      keptMediaSegments += 1;
     }
 
     cleanLines.push(raw);
+  }
+
+  // Safety guard: never return a media playlist with 0 playable segments if original had segments
+  if (isMediaPlaylist && keptMediaSegments === 0 && insideAdCue) {
+    return { text: playlistText, strippedCount: 0 };
   }
 
   return { text: cleanLines.join('\n'), strippedCount };
@@ -687,6 +708,13 @@ app.get('/api/vpn-status', (_req, res) => {
   });
 });
 
+app.options('/api/vpn-relay', (_req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-KhelaDekH-VPN-Mode, X-KhelaDekH-VPN-Region');
+  return res.status(204).end();
+});
+
 app.get('/api/vpn-relay', async (req, res) => {
   const rawTarget = typeof req.query.url === 'string' ? req.query.url : '';
   const regionKey =
@@ -701,7 +729,7 @@ app.get('/api/vpn-relay', async (req, res) => {
 
   const regionCfg = VPN_REGIONS[regionKey];
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 24000);
+  const timeout = setTimeout(() => controller.abort(), 28000);
   const isNimbleHost =
     parsedTarget.hostname.includes('ncare.live') || parsedTarget.hostname.includes('jagobd');
 
@@ -740,7 +768,7 @@ app.get('/api/vpn-relay', async (req, res) => {
       } catch (err) {
         if (attempt === 1) throw err;
       }
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 200));
     }
 
     if (!upstream || !upstream.ok) {
@@ -750,9 +778,11 @@ app.get('/api/vpn-relay', async (req, res) => {
 
     const contentType = (upstream.headers.get('content-type') || '').toLowerCase();
     const finalUrl = upstream.url || parsedTarget.href;
+    const cleanPath = finalUrl.split('?')[0].toLowerCase();
     const isPlaylist =
       contentType.includes('mpegurl') ||
-      finalUrl.toLowerCase().includes('.m3u8');
+      cleanPath.endsWith('.m3u8') ||
+      cleanPath.endsWith('.m3u');
 
     if (isPlaylist) {
       const rawPlaylistText = await upstream.text();
@@ -788,8 +818,19 @@ app.get('/api/vpn-relay', async (req, res) => {
       return res.status(200).send(rewritten);
     }
 
+    // Normalize video segment MIME type (handles Nimble obfuscated .png MPEG-TS segments)
+    const normalizedContentType =
+      contentType === 'video/m2ts' ||
+      contentType === 'image/png' ||
+      contentType === 'application/octet-stream' ||
+      !contentType ||
+      cleanPath.endsWith('.ts') ||
+      (isNimbleHost && cleanPath.endsWith('.png'))
+        ? 'video/mp2t'
+        : contentType;
+
     // Stream binary video segment immediately without buffering whole chunks in RAM
-    res.setHeader('Content-Type', contentType || 'video/mp2t');
+    res.setHeader('Content-Type', normalizedContentType);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 'public, max-age=15');
     res.setHeader('X-KhelaDekH-VPN-Node', regionCfg.label);
@@ -1135,22 +1176,13 @@ app.post('/api/discover-stream-servers', async (req, res) => {
       sportId === 'basketball' ||
       /basketball|nba|lakers|warriors|celtics|pistons|thunder|hawks/i.test(query);
 
-    const willowCricketServer = {
-      id: 'willow-cricket',
-      name: 'Willow Sports HD (২৪/৭ ক্রিকেট টিভি)',
-      quality: '1080p HD TV',
-      url: applyVpnRoute(SPORT_TV_CHANNELS.WILLOW_SPORTS),
-      badge: 'ক্রিকেট ব্রডকাস্টার',
-      description: 'সরাসরি Willow Sports ক্রিকেট টিভি চ্যানেল — উচ্চগতির বাফার-মুক্ত ১০৮০p লাইভ।',
-    };
-
     const gtvServer = {
       id: 'gtv-bd',
       name: 'GTV বাংলাদেশ লাইভ (গাজী টিভি HD)',
-      quality: '1080p HLS',
+      quality: '720p HD HLS',
       url: applyVpnRoute(SPORT_TV_CHANNELS.GTV_LIVE),
-      badge: useVpn ? `VPN (${region.toUpperCase()}) LIVE` : 'বাংলাদেশ টিভি LIVE',
-      description: 'সরাসরি গাজী টিভি (GTV) বাংলাদেশ স্পোর্টস লাইভ সম্প্রচার।',
+      badge: useVpn ? `GTV LIVE (VPN ${region.toUpperCase()})` : 'GTV LIVE (প্রাইমারি)',
+      description: 'সরাসরি গাজী টিভি (GTV) বাংলাদেশ স্পোর্টস ও ক্রিকেট লাইভ সম্প্রচার।',
     };
 
     const ddSportsServer = {
@@ -1225,22 +1257,31 @@ app.post('/api/discover-stream-servers', async (req, res) => {
       description: 'অফিশিয়াল ইউরোভিশন স্পোর্ট লাইভ টিভি চ্যানেল।',
     };
 
-    const fuboBasketballServer = {
-      id: 'fubo-sports',
-      name: 'Fubo Sports Network Live (বাস্কেটবল ও US)',
-      quality: '1080p HD TV',
-      url: applyVpnRoute(SPORT_TV_CHANNELS.FUBO_SPORTS),
-      badge: 'বাস্কেটবল ব্রডকাস্টার',
-      description: 'NBA ও নর্থ আমেরিকান লাইভ স্পোর্টস সম্প্রচারকারী Fubo Sports TV।',
-    };
-
     const accBasketballServer = {
       id: 'acc-sports',
-      name: 'ACC Digital Network (বাস্কেটবল টিভি)',
+      name: 'ACC Digital Network (বাস্কেটবল ও লাইভ স্পোর্টস)',
       quality: '1080p HD TV',
       url: applyVpnRoute(SPORT_TV_CHANNELS.ACC_SPORTS),
       badge: 'কোর্ট সাইড টিভি',
       description: 'কলেজ ও প্রো বাস্কেটবল লাইভ টিভি নেটওয়ার্ক।',
+    };
+
+    const fivePlusServer = {
+      id: 'five-plus',
+      name: '5Plus Sports HD (মাল্টি স্পোর্টস)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.FIVE_PLUS),
+      badge: 'স্পোর্টস HD',
+      description: 'আন্তর্জাতিক ফুটবল, বাস্কেটবল ও ক্রিকেট হাই-স্পিড লাইভ টিভি।',
+    };
+
+    const foxSportsNewsServer = {
+      id: 'fox-sports-news',
+      name: 'Fox Sports News Live (২৪/৭ স্পোর্টস)',
+      quality: '1080p HD TV',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.FOX_SPORTS_NEWS),
+      badge: 'লাইভ স্পোর্টস',
+      description: '২৪/৭ আন্তর্জাতিক লাইভ স্পোর্টস সংবাদ ও বিশ্লেষণ।',
     };
 
     const redBullServer = {
@@ -1260,7 +1301,7 @@ app.post('/api/discover-stream-servers', async (req, res) => {
       badge: tSportsInfo.isLiveNow ? 'T Sports LIVE' : 'T Sports (শিডিউল্ড)',
       description: tSportsInfo.isLiveNow
         ? `${tSportsInfo.primaryTitle} — টি স্পোর্টস অফিশিয়াল সরাসরি সম্প্রচার।`
-        : `${tSportsInfo.primaryTitle} — এই মুহূর্তে T Sports ইউটিউব ফিড বিরতিতে থাকলে স্বয়ংক্রিয়ভাবে লাইভ ক্রিকেট টিভি (Willow / GTV) চলবে।`,
+        : `${tSportsInfo.primaryTitle} — T Sports ইউটিউব লাইভ বন্ধ থাকলে স্বয়ংক্রিয়ভাবে GTV বাংলাদেশ লাইভ চলবে।`,
     };
 
     const ytMatchServer = ytStreams[0]
@@ -1269,23 +1310,32 @@ app.post('/api/discover-stream-servers', async (req, res) => {
           name: `লাইভ ম্যাচ ব্রডকাস্ট (${ytStreams[0].channel})`,
           quality: '1080p Live',
           url: ytEmbed(ytStreams[0].videoId),
-          badge: 'এই ম্যাচের টিভি ফিড',
+          badge: 'এই ম্যাচের ইউটিউব ফিড',
           description: `${ytStreams[0].title} — এই ম্যাচের চলমান সরাসরি সম্প্রচার।`,
         }
       : null;
 
+    const willowHdServer = {
+      id: 'willow-hd',
+      name: 'Willow Cricket HD (লাইভ ক্রিকেট টিভি)',
+      quality: '720p60 HD',
+      url: applyVpnRoute(SPORT_TV_CHANNELS.WILLOW_HD),
+      badge: 'ক্রিকেট ব্রডকাস্টার',
+      description: 'সরাসরি Willow Cricket HD — ৬০fps বাফার-মুক্ত ক্রিকেট লাইভ সম্প্রচার।',
+    };
+
     let serverList: any[];
     if (isCricket) {
+      // GTV Live is Server #1 (primary verified Bangladeshi sports broadcast)
       const baseCricketPool = [
+        gtvServer,
+        willowHdServer,
+        ddSportsServer,
+        cricketGoldServer,
         tSportsInfo.isLiveNow ? tSportsServerObj : null,
         ytMatchServer,
-        willowCricketServer,
-        ddSportsServer,
-        gtvServer,
-        cricketGoldServer,
-        tSportsServerObj,
+        foxSportsNewsServer,
       ].filter(Boolean) as any[];
-      // Deduplicate by id and pick 5 best cricket TV broadcasters
       const seen = new Set<string>();
       serverList = baseCricketPool
         .filter((s) => {
@@ -1297,42 +1347,38 @@ app.post('/api/discover-stream-servers', async (req, res) => {
         .map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
     } else if (isFootball) {
       const baseFootballPool = [
-        ytMatchServer,
-        fifaPlusServer,
+        gtvServer,
         beinFootballServer,
+        fifaPlusServer,
         tycSportsServer,
         interTvServer,
-        gtvServer,
       ].filter(Boolean) as any[];
       serverList = baseFootballPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
     } else if (isTennis) {
       const baseTennisPool = [
-        ytMatchServer,
+        gtvServer,
         tennisChannelServer,
         eurovisionServer,
         beinFootballServer,
         redBullServer,
-        ddSportsServer,
       ].filter(Boolean) as any[];
       serverList = baseTennisPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
     } else if (isBasketball) {
       const baseBasketPool = [
-        ytMatchServer,
-        fuboBasketballServer,
+        gtvServer,
         accBasketballServer,
+        fivePlusServer,
         beinFootballServer,
         redBullServer,
-        eurovisionServer,
       ].filter(Boolean) as any[];
       serverList = baseBasketPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
     } else {
       const baseGeneralPool = [
-        ytMatchServer,
+        gtvServer,
         beinFootballServer,
-        willowCricketServer,
+        ddSportsServer,
         fifaPlusServer,
         redBullServer,
-        ddSportsServer,
       ].filter(Boolean) as any[];
       serverList = baseGeneralPool.slice(0, 5).map((s, idx) => ({ ...s, id: `server-${idx + 1}` }));
     }
@@ -1934,41 +1980,20 @@ function extractCleanChannelsFromContent(
     if (channels.length > 0) return { channels, adsBlockedCount };
   }
 
-  // 3. Strip HTML ad scripts & count ad tags if HTML page
-  let sanitizedHtml = content;
-  if (/<html|<body|<script|<iframe/i.test(content)) {
-    const adTagMatches = content.match(/<(script|iframe|ins)\b[^>]*?(doubleclick|googlesyndication|adsterra|propellerads|popads|monetag|taboola|outbrain|adservice|ads|analytics)[^>]*>/gi);
-    adsBlockedCount += adTagMatches ? adTagMatches.length : 0;
-
-    sanitizedHtml = content
-      .replace(/<script\b[^>]*?(doubleclick|googlesyndication|adsterra|propellerads|popads|monetag|taboola|outbrain|adservice|vast|vmap)[\s\S]*?<\/script>/gi, '')
-      .replace(/<iframe\b[^>]*?(doubleclick|googlesyndication|adsterra|propellerads|popads|monetag|adservice)[\s\S]*?<\/iframe>/gi, '');
-
-    // Extract title + iframe embeds that are genuine video players (YouTube/Vimeo/Stream players)
-    const iframeRegex = /<iframe[^>]+src=["']([^"']+)["'][^>]*>/gi;
-    let ifrMatch: RegExpExecArray | null;
-    while ((ifrMatch = iframeRegex.exec(sanitizedHtml)) !== null && channels.length < 60) {
-      const src = ifrMatch[1];
-      if (AD_AND_TRACKER_REGEX.test(src)) {
-        adsBlockedCount += 1;
-        continue;
-      }
-      if (/youtube|youtu\.be|player|live|embed|twitch|dailymotion|stream/i.test(src)) {
-        pushChannel(`${options.appName || options.brandName} Player #${channels.length + 1}`, src, undefined, 'sports');
-      }
-    }
+  // 3. Reject HTML webpage scraping; allow plain text line-by-line stream lists (.txt / .m3u8)
+  if (/<html|<head|<body|<script|<iframe/i.test(trimmed)) {
+    return { channels, adsBlockedCount };
   }
 
-  // 4. Deep URL extraction across HTML / APK DEX / XML / JSON text
-  const urlMatches = sanitizedHtml.match(/https?:\/\/[^\s"'<>\\`|\x00-\x1f]{10,400}/g) || [];
-  for (const rawMatch of urlMatches) {
-    const cleanUrl = rawMatch.replace(/[,;.)\]]+$/, '');
+  const lines = content.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const cleanUrl = rawLine.trim();
+    if (!cleanUrl || cleanUrl.startsWith('#') || !/^https?:\/\//i.test(cleanUrl)) continue;
     if (AD_AND_TRACKER_REGEX.test(cleanUrl)) {
       adsBlockedCount += 1;
       continue;
     }
     if (!isPlayableStreamUrl(cleanUrl)) continue;
-    // Derive readable channel name from URL path if available
     let derivedName = '';
     try {
       const u = new URL(cleanUrl);
@@ -1983,82 +2008,6 @@ function extractCleanChannelsFromContent(
   }
 
   return { channels, adsBlockedCount };
-}
-
-function extractTextFromApkZipBuffer(buf: Buffer): string {
-  // Check ZIP local file magic PK\x03\x04
-  if (buf.length < 22 || buf.readUInt32LE(0) !== 0x04034b50) {
-    return buf.toString('utf8');
-  }
-
-  // Locate End of Central Directory (0x06054b50) scanning backwards from end
-  const minOffset = Math.max(0, buf.length - 65558);
-  let eocdOffset = -1;
-  for (let pos = buf.length - 22; pos >= minOffset; pos--) {
-    if (buf.readUInt32LE(pos) === 0x06054b50) {
-      eocdOffset = pos;
-      break;
-    }
-  }
-  if (eocdOffset === -1) {
-    return buf.toString('latin1');
-  }
-
-  const cdirOffset = buf.readUInt32LE(eocdOffset + 16);
-  const cdirSize = buf.readUInt32LE(eocdOffset + 12);
-  let pos = cdirOffset;
-  const cdirEnd = Math.min(buf.length, cdirOffset + cdirSize);
-  const chunks: string[] = [];
-  let totalDecodedBytes = 0;
-
-  while (pos + 46 <= cdirEnd) {
-    if (buf.readUInt32LE(pos) !== 0x02014b50) break;
-    const method = buf.readUInt16LE(pos + 10);
-    const compressedSize = buf.readUInt32LE(pos + 20);
-    const uncompressedSize = buf.readUInt32LE(pos + 24);
-    const fnameLen = buf.readUInt16LE(pos + 28);
-    const extraLen = buf.readUInt16LE(pos + 30);
-    const commentLen = buf.readUInt16LE(pos + 32);
-    const localHeaderOffset = buf.readUInt32LE(pos + 42);
-    const fileName = buf.subarray(pos + 46, pos + 46 + fnameLen).toString('utf8');
-    pos += 46 + fnameLen + extraLen + commentLen;
-
-    // Only inspect manifests, dex, resources, configs, playlists, web assets
-    if (!/\.(dex|arsc|xml|json|m3u8?|html?|js|txt|cfg|properties)$/i.test(fileName)) {
-      continue;
-    }
-    if (uncompressedSize > 25 * 1024 * 1024 || totalDecodedBytes > 60 * 1024 * 1024) {
-      continue;
-    }
-    if (localHeaderOffset + 30 > buf.length || buf.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
-      continue;
-    }
-
-    const lfFnameLen = buf.readUInt16LE(localHeaderOffset + 26);
-    const lfExtraLen = buf.readUInt16LE(localHeaderOffset + 28);
-    const dataStart = localHeaderOffset + 30 + lfFnameLen + lfExtraLen;
-    if (dataStart + compressedSize > buf.length) continue;
-
-    try {
-      const compSlice = buf.subarray(dataStart, dataStart + compressedSize);
-      let rawEntry: Buffer;
-      if (method === 0) {
-        rawEntry = compSlice;
-      } else if (method === 8) {
-        rawEntry = zlib.inflateRawSync(compSlice);
-      } else {
-        continue;
-      }
-      totalDecodedBytes += rawEntry.length;
-      // Replace non-printable bytes with spaces so URLs embedded inside binary .dex / .arsc remain intact
-      const asciiView = rawEntry.toString('latin1').replace(/[^\x20-\x7E\r\n]/g, ' ');
-      chunks.push(asciiView);
-    } catch {
-      // skip corrupt zip entry
-    }
-  }
-
-  return chunks.join('\n');
 }
 
 async function fetchSafePublicUrlWithRedirects(
@@ -2176,33 +2125,33 @@ app.post('/api/source-bridge/import', async (req, res) => {
       });
     }
 
-    const hasZipMagic = rawBuf.length >= 4 && rawBuf.readUInt32LE(0) === 0x04034b50;
-    const looksLikeApkOrZip =
-      hasZipMagic ||
-      /\.(apk|zip)(\?|$)/i.test(finalUrl) ||
-      /\.(apk|zip)/i.test(contentDisposition) ||
+    const hasBinaryMagic =
+      rawBuf.length >= 4 &&
+      (rawBuf.readUInt32LE(0) === 0x04034b50 || rawBuf.readUInt16LE(0) === 0x5a4d);
+    const isDisallowedBinary =
+      hasBinaryMagic ||
+      /\.(apk|zip|exe|bin|dmg|deb)(\?|$)/i.test(finalUrl) ||
+      /\.(apk|zip|exe)/i.test(contentDisposition) ||
       contentType.includes('android.package-archive') ||
       contentType.includes('application/zip');
 
-    if (looksLikeApkOrZip) {
-      const extractedText = extractTextFromApkZipBuffer(rawBuf);
-      const result = extractCleanChannelsFromContent(extractedText, {
-        brandName,
-        appName,
-        stripAds: Boolean(stripAds),
-      });
-      return res.json({
-        success: true,
-        appName,
-        sourceType: 'apk',
-        totalFound: result.channels.length,
-        adsBlockedCount: result.adsBlockedCount,
-        channels: result.channels,
+    if (isDisallowedBinary) {
+      return res.status(400).json({
+        success: false,
+        error: 'APK বা বাইনারি ফাইল সমর্থিত নয়। শুধুমাত্র অনুমোদিত .m3u, .m3u8, .json বা ডাইরেক্ট স্ট্রিম প্লেলিস্ট লিংক দিন।',
       });
     }
 
-    // Decode bounded text (up to 6MB for non-APK text playlists/JSON/HTML)
+    // Decode bounded text (up to 6MB for structured playlists / JSON / M3U)
     const bodyText = rawBuf.subarray(0, 6 * 1024 * 1024).toString('utf8');
+
+    // Reject arbitrary HTML website scraping
+    if (contentType.includes('text/html') || /<!doctype html|<html\b/i.test(bodyText.slice(0, 512))) {
+      return res.status(400).json({
+        success: false,
+        error: 'সাধারণ ওয়েবপেজ স্ক্র্যাপিং সমর্থিত নয়। দয়া করে সরাসরি বৈধ .m3u, .m3u8 বা .json প্লেলিস্ট লিংক দিন।',
+      });
+    }
 
     // If URL itself is directly an HLS playlist (.m3u8) with video segments (not a multi-channel .m3u directory)
     if (finalUrl.toLowerCase().includes('.m3u8') || contentType.includes('mpegurl')) {
@@ -2257,7 +2206,7 @@ app.post('/api/source-bridge/import', async (req, res) => {
     return res.json({
       success: true,
       appName,
-      sourceType: contentType.includes('json') ? 'json' : 'website',
+      sourceType: contentType.includes('json') || bodyText.trim().startsWith('{') || bodyText.trim().startsWith('[') ? 'json' : 'm3u',
       totalFound: result.channels.length,
       adsBlockedCount: result.adsBlockedCount,
       channels: result.channels,
@@ -2266,14 +2215,14 @@ app.post('/api/source-bridge/import', async (req, res) => {
     const status = typeof err?.statusCode === 'number' ? err.statusCode : 502;
     return res.status(status).json({
       success: false,
-      error: status === 413 ? err.message : `সোর্স অ্যাপস থেকে স্ট্রিম সংগ্রহ ব্যর্থ হয়েছে: ${err.message || 'Timeout'}`,
+      error: status === 413 ? err.message : `প্লেলিস্ট থেকে স্ট্রিম লোড ব্যর্থ হয়েছে: ${err.message || 'Timeout'}`,
     });
   }
 });
 
 app.post(
   '/api/source-bridge/extract-file',
-  express.raw({ type: 'application/octet-stream', limit: '60mb' }),
+  express.raw({ type: 'application/octet-stream', limit: '10mb' }),
   async (req, res) => {
     const authCheck = await verifyAdminFirebaseToken(req);
     if (!authCheck.ok) {
@@ -2284,11 +2233,21 @@ app.post(
     if (bodyBuf.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'ফাইলটি খালি বা পড়া যায়নি। অনুগ্রহ করে .apk, .m3u, .m3u8, .json বা .html ফাইল আপলোড করুন।',
+        error: 'ফাইলটি খালি বা পড়া যায়নি। অনুগ্রহ করে .m3u, .m3u8, .json বা .txt প্লেলিস্ট ফাইল আপলোড করুন।',
       });
     }
 
-    const rawName = typeof req.query.filename === 'string' ? req.query.filename : 'uploaded-app';
+    const rawName = typeof req.query.filename === 'string' ? req.query.filename : 'playlist';
+    const isBinaryZipOrApk =
+      (bodyBuf.length >= 4 && bodyBuf.readUInt32LE(0) === 0x04034b50) ||
+      /\.(apk|zip|exe)$/i.test(rawName);
+    if (isBinaryZipOrApk) {
+      return res.status(400).json({
+        success: false,
+        error: 'APK বা ZIP ফাইল সমর্থিত নয়। অনুগ্রহ করে বৈধ .m3u, .m3u8 বা .json প্লেলিস্ট ফাইল আপলোড করুন।',
+      });
+    }
+
     const appName = typeof req.query.appName === 'string' && req.query.appName.trim()
       ? req.query.appName.trim()
       : rawName.replace(/\.[^.]+$/, '');
@@ -2298,12 +2257,8 @@ app.post(
     const stripAds = req.query.stripAds !== 'false';
 
     try {
-      const isZipApk = bodyBuf.length >= 4 && bodyBuf.readUInt32LE(0) === 0x04034b50;
-      const extractedText = isZipApk
-        ? extractTextFromApkZipBuffer(bodyBuf)
-        : bodyBuf.toString('utf8');
-
-      const result = extractCleanChannelsFromContent(extractedText, {
+      const textContent = bodyBuf.toString('utf8');
+      const result = extractCleanChannelsFromContent(textContent, {
         brandName,
         appName,
         stripAds,
@@ -2312,7 +2267,7 @@ app.post(
       return res.json({
         success: true,
         appName,
-        sourceType: isZipApk ? 'apk' : 'm3u',
+        sourceType: textContent.trim().startsWith('{') || textContent.trim().startsWith('[') ? 'json' : 'm3u',
         totalFound: result.channels.length,
         adsBlockedCount: result.adsBlockedCount,
         channels: result.channels,
@@ -2320,7 +2275,7 @@ app.post(
     } catch (err: any) {
       return res.status(500).json({
         success: false,
-        error: `অ্যাপস ফাইল বিশ্লেষণে ত্রুটি: ${err.message || 'Parse error'}`,
+        error: `প্লেলিস্ট ফাইল বিশ্লেষণে ত্রুটি: ${err.message || 'Parse error'}`,
       });
     }
   }

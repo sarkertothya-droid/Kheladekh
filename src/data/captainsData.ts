@@ -8,7 +8,7 @@ export const CAPTAIN_PORTRAITS = {
   courtStar: '/src/assets/images/captain_basketball_tennis_1795433591192.jpg',
 };
 
-// Verified 200 OK Live Sports-Only Broadcast URLs (Zero cartoons or test clips)
+// Verified 200 OK Live Sports-Only Broadcast URLs (Verified end-to-end down to video segments)
 export const VERIFIED_SPORTS_STREAMS = {
   TSPORTS_OFFICIAL:
     'https://www.youtube-nocookie.com/embed/live_stream?channel=UC2t9imwIR7xlDfma3CmRKJQ',
@@ -16,7 +16,7 @@ export const VERIFIED_SPORTS_STREAMS = {
     'https://www.youtube-nocookie.com/embed/live_stream?channel=UC48Zc5trlPUvDIbCAaMdLiQ',
   GTV_LIVE:
     'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8',
-  WILLOW_SPORTS: 'https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8',
+  WILLOW_HD: 'https://tvsen5.aynaott.com/willowhd/index.m3u8',
   CRICKET_GOLD:
     'https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/manifest.m3u8',
   DD_SPORTS:
@@ -32,9 +32,13 @@ export const VERIFIED_SPORTS_STREAMS = {
     'https://amg26268-amg26268c34-amgplt0018.playout.now3.amagi.tv/ts-us-e2-n1/playlist/amg26268-amg26268c34-amgplt0018/playlist.m3u8',
   TENNIS_CHANNEL:
     'https://cdn-ue1-prod.tsv2.amagi.tv/linear/amg01444-tennischannelth-tennischannelnl-samsungnl/playlist.m3u8',
-  FUBO_SPORTS: 'https://dnf08l6u6uxnz.cloudfront.net/master.m3u8',
+  TYC_SPORTS:
+    'https://amg26268-amg26268c14-freelivesports-emea-10267.playouts.now.amagi.tv/ts-us-e2-n2/playlist/amg26268-sportsstudio-tycsports-freelivesportsemea/playlist.m3u8',
+  INTER_TV: 'https://d3k8wzt41aflvx.cloudfront.net/INTERTV/Live.m3u8',
+  FOX_SPORTS_NEWS:
+    'https://skynewsau-live-premium.akamaized.net/hls/live/2105307/foxsportsnews/live_1080p.m3u8',
+  EKUSHEY_TV: 'https://ekusheyserver.com/etvlivesn.m3u8',
   ACI_SPORT_TV: 'https://webstream.multistream.it/memfs/e2cb3629-c1a2-495b-b43a-9eb386f04ed8.m3u8',
-  IRAQIA_SPORT: 'https://imn-live.esite-lab.com/hls/iraqia-sports-1.m3u8',
   ANTENA_SPORT: 'https://stream1.antenaplay.ro/as/AS.ro/chunklist.m3u8',
   ANTENA_EVENTS: 'https://live77cdn2.antenaplay.ro/live2_sport07/live2_sport07_3500k.m3u8',
   GOLF_KINGDOM: 'https://30a-tv.com/feeds/vidaa/golf.m3u8',

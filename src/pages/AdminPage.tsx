@@ -669,7 +669,7 @@ export const AdminPage: React.FC = () => {
         { id: 'automation', label: 'Auto TV & Feeds', icon: <Zap className="w-4 h-4 text-[#00B7FF]" /> },
         {
           id: 'sourceBridge',
-          label: 'Apps Bridge & Brand',
+          label: 'Brand & Playlist',
           icon: <ShieldCheck className="w-4 h-4 text-[#16D98A]" />,
           badge: customChannels.length > 0 ? `${customChannels.length}` : undefined,
         },

@@ -182,16 +182,16 @@ export const TvPage: React.FC = () => {
     return [...list].sort((a, b) => (a.channelNumber || 0) - (b.channelNumber || 0));
   }, [allChannels, customChannels, selectedCategory, searchQuery, favorites]);
 
-  // Verified adaptive sports-only fallback streams (never duplicates GTV_LIVE so failover always tries fresh working CDNs)
+  // Verified adaptive sports-only fallback streams (all verified 200 OK down to video segments)
   const VERIFIED_FALLBACK_STREAMS = useMemo(() => [
-    VERIFIED_SPORTS_STREAMS.WILLOW_SPORTS,
-    VERIFIED_SPORTS_STREAMS.FIFA_PLUS,
-    VERIFIED_SPORTS_STREAMS.BEIN_XTRA,
+    VERIFIED_SPORTS_STREAMS.GTV_LIVE,
+    VERIFIED_SPORTS_STREAMS.DD_SPORTS,
     VERIFIED_SPORTS_STREAMS.CRICKET_GOLD,
-    VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
-    VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
+    VERIFIED_SPORTS_STREAMS.BEIN_XTRA,
+    VERIFIED_SPORTS_STREAMS.FIFA_PLUS,
     VERIFIED_SPORTS_STREAMS.FIVE_PLUS,
-    VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT,
+    VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
+    VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
   ], []);
 
   // Assemble full list of stream candidate URLs for the selected channel
@@ -242,11 +242,11 @@ export const TvPage: React.FC = () => {
           if (data.success && data.isLiveNow && data.primaryEmbedUrl) {
             setTSportsResolvedUrl(data.primaryEmbedUrl);
           } else {
-            // T Sports YouTube stream is currently offline/upcoming -> auto-switch to active live BD HLS backup so moving video plays immediately
+            // T Sports YouTube stream is currently offline/upcoming -> auto-switch to active live BD HLS backup (GTV Live)
             setTSportsResolvedUrl(null);
             setActiveStreamIndex(2);
             setFailoverNotice(
-              'T Sports ইউটিউব লাইভ বর্তমানে বিরতিতে/আপকামিং — সরাসরি BD স্পোর্টস (GTV HLS) চালানো হচ্ছে!'
+              'T Sports ইউটিউব লাইভ বর্তমানে বিরতিতে — সরাসরি GTV বাংলাদেশ লাইভ চালানো হচ্ছে!'
             );
             setTimeout(() => setFailoverNotice(null), 6000);
           }
@@ -338,21 +338,35 @@ export const TvPage: React.FC = () => {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setIsLoading(false);
         setHasPlaybackError(false);
         setHeartbeatStatus('healthy');
         video.muted = true;
         video
           .play()
-          .then(() => setIsPlaying(true))
-          .catch(() => setIsPlaying(false));
+          .then(() => {
+            setIsPlaying(true);
+            setIsLoading(false);
+          })
+          .catch(() => {
+            setIsLoading(false);
+            setIsPlaying(false);
+          });
       });
 
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        setIsLoading(false);
+        setHasPlaybackError(false);
+        setHeartbeatStatus('healthy');
+      });
+
+      let netRetries = 0;
+      let lastMediaErr = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
-          console.warn('TV HLS fatal error on stream', playbackStreamUrl, data.type);
+          console.warn('TV HLS fatal error on stream', playbackStreamUrl, data.type, data.details);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
+              netRetries += 1;
               setHeartbeatStatus('warning');
               if (!vpnActive && !networkConfig.isRelayed) {
                 hls.destroy();
@@ -361,16 +375,23 @@ export const TvPage: React.FC = () => {
                 setTimeout(() => setFailoverNotice(null), 5000);
                 return;
               }
-              if (availableStreams.length > 1) {
+              if (netRetries <= 2) {
+                hls.startLoad();
+              } else if (availableStreams.length > 1) {
                 hls.destroy();
                 switchToBackupStream('নেটওয়ার্ক/স্ট্রিম পরিবর্তন');
               } else {
-                hls.startLoad();
+                setHasPlaybackError(true);
+                setIsLoading(false);
               }
               break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
+            case Hls.ErrorTypes.MEDIA_ERROR: {
+              const now = Date.now();
+              if (now - lastMediaErr < 5000) hls.swapAudioCodec();
+              lastMediaErr = now;
               hls.recoverMediaError();
               break;
+            }
             default:
               hls.destroy();
               setHeartbeatStatus('reconnecting');
@@ -411,24 +432,31 @@ export const TvPage: React.FC = () => {
   }, [selectedChannel, playbackStreamUrl, isEmbed, availableStreams.length, switchToBackupStream, vpnActive, networkConfig]);
 
   // STREAM HEARTBEAT MONITOR:
-  // Every 2 seconds, verify that the active broadcast is actually progressing (frames decoded & advancing).
-  // Catches BOTH startup hangs (readyState < 2 / videoWidth === 0 / currentTime === 0) AND mid-stream freezes.
+  // Every 2 seconds, verify that frames are advancing or buffer is actively downloading.
+  // Allows 16s for initial large HD chunk buffering (e.g. GTV Live 5MB chunks) before auto-failover.
   useEffect(() => {
     if (isEmbed) return;
 
     let lastProgressTime = 0;
+    let lastBufferedEnd = 0;
     let stallCount = 0;
 
     const heartbeatInterval = setInterval(() => {
       const video = videoRef.current;
       if (!video) return;
 
-      // If video has an error attribute set by the browser
       if (video.error) {
         console.warn('[Stream Heartbeat] Video element error detected:', video.error.message);
         switchToBackupStream('Media Decoder Error');
         return;
       }
+
+      if (video.paused || video.ended) {
+        return;
+      }
+
+      const bufferedEnd =
+        video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
 
       const isProgressing =
         video.readyState >= 2 &&
@@ -438,6 +466,7 @@ export const TvPage: React.FC = () => {
 
       if (isProgressing) {
         lastProgressTime = video.currentTime;
+        lastBufferedEnd = bufferedEnd;
         stallCount = 0;
         setHeartbeatStatus('healthy');
         setIsLoading(false);
@@ -445,21 +474,25 @@ export const TvPage: React.FC = () => {
         return;
       }
 
-      if (!video.paused && !video.ended) {
-        stallCount += 1;
-        if (stallCount >= 2) {
-          setHeartbeatStatus('warning');
-        }
-        if (stallCount >= 3) {
-          stallCount = 0;
-          if (!vpnActive && !networkConfig.isRelayed) {
-            setVpnActive(true);
-            setFailoverNotice('স্ট্রিম সংযোগ সচল করতে অটো VPN রিলে চালু হয়েছে...');
-            setTimeout(() => setFailoverNotice(null), 5000);
-          } else {
-            // Startup hung or frozen for 6+ seconds -> Auto-failover to next live backup server
-            switchToBackupStream('স্ট্রিম সিগন্যাল রেসপন্স বিলম্ব');
-          }
+      if (bufferedEnd > lastBufferedEnd + 0.25) {
+        lastBufferedEnd = bufferedEnd;
+        stallCount = Math.max(0, stallCount - 1);
+        setHeartbeatStatus('healthy');
+        return;
+      }
+
+      stallCount += 1;
+      if (stallCount >= 4) {
+        setHeartbeatStatus('warning');
+      }
+      if (stallCount >= 8) {
+        stallCount = 0;
+        if (!vpnActive && !networkConfig.isRelayed) {
+          setVpnActive(true);
+          setFailoverNotice('স্ট্রিম সংযোগ সচল করতে অটো VPN রিলে চালু হয়েছে...');
+          setTimeout(() => setFailoverNotice(null), 5000);
+        } else {
+          switchToBackupStream('স্ট্রিম সিগন্যাল রেসপন্স বিলম্ব');
         }
       }
     }, 2000);
@@ -603,6 +636,46 @@ export const TvPage: React.FC = () => {
                     সার্ভার {activeStreamIndex + 1}/{availableStreams.length} · VPN Relay সক্রিয়
                   </span>
                 </div>
+              </div>
+            )}
+
+            {/* Tap to Play Overlay when browser blocks autoplay */}
+            {!isLoading && !isPlaying && !hasPlaybackError && !isEmbed && (
+              <div className="absolute inset-0 bg-black/55 flex items-center justify-center z-15">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (videoRef.current) {
+                      videoRef.current.muted = false;
+                      setIsMuted(false);
+                      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {
+                        if (videoRef.current) {
+                          videoRef.current.muted = true;
+                          setIsMuted(true);
+                          videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+                        }
+                      });
+                    }
+                  }}
+                  className="px-5 py-3 rounded-2xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] font-extrabold text-sm flex items-center gap-2.5 shadow-2xl shadow-[#00B7FF]/40 transition-transform active:scale-95"
+                >
+                  <Play className="w-5 h-5 fill-current" />
+                  <span>লাইভ টিভি চালু করুন (Tap to Play)</span>
+                </button>
+              </div>
+            )}
+
+            {/* Tap to Unmute Banner */}
+            {isPlaying && isMuted && !isEmbed && (
+              <div className="absolute bottom-14 left-4 z-20">
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  className="px-3.5 py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold flex items-center gap-2 shadow-xl transition-transform active:scale-95"
+                >
+                  <VolumeX className="w-4 h-4" />
+                  <span>সাউন্ড চালু করুন (Unmute)</span>
+                </button>
               </div>
             )}
 

@@ -41,9 +41,9 @@ export interface ResolutionOption {
   height?: number;
 }
 
-export const VERIFIED_HLS_STREAM_1 = VERIFIED_SPORTS_STREAMS.WILLOW_SPORTS;
-export const VERIFIED_HLS_STREAM_2 = VERIFIED_SPORTS_STREAMS.GTV_LIVE;
-export const VERIFIED_HLS_STREAM_3 = VERIFIED_SPORTS_STREAMS.DD_SPORTS;
+export const VERIFIED_HLS_STREAM_1 = VERIFIED_SPORTS_STREAMS.GTV_LIVE;
+export const VERIFIED_HLS_STREAM_2 = VERIFIED_SPORTS_STREAMS.DD_SPORTS;
+export const VERIFIED_HLS_STREAM_3 = VERIFIED_SPORTS_STREAMS.CRICKET_GOLD;
 export const VERIFIED_HLS_STREAM_4 = VERIFIED_SPORTS_STREAMS.BEIN_XTRA;
 export const VERIFIED_MP4_STREAM_5 = VERIFIED_SPORTS_STREAMS.FIFA_PLUS;
 
@@ -59,7 +59,11 @@ const isBlockedNonSportStream = (url?: string): boolean => {
     u.includes('x36xhzz') ||
     u.includes('mov_bbb') ||
     u.includes('v_645516') ||
-    u.includes('ucbokypijkxclhvhmhojupyq')
+    u.includes('ucbokypijkxclhvhmhojupyq') ||
+    u.includes('d36r8jifhgsk5j.cloudfront.net') ||
+    u.includes('dnf08l6u6uxnz.cloudfront.net') ||
+    u.includes('imn-live.esite-lab.com') ||
+    u.includes('streamtp10.com')
   );
 };
 
@@ -72,27 +76,27 @@ export const buildDefaultServers = (primaryUrl?: string, brandName = 'KhelaDekH'
   return [
     {
       id: 'server-1',
-      name: `${brandName} সার্ভার ১ (প্রাইমারি টিভি ১০৮০p)`,
-      quality: '1080p HD TV',
+      name: `${brandName} — GTV বাংলাদেশ লাইভ (গাজী টিভি)`,
+      quality: '720p HD HLS',
       url: cleanPrimary,
-      badge: 'ম্যাচ ব্রডকাস্টার',
-      description: 'সরাসরি চলমান খেলা সম্প্রচারকারী টিভি চ্যানেল (দ্রুত ও স্থিতিশীল)।',
+      badge: 'GTV LIVE (প্রাইমারি)',
+      description: 'সরাসরি গাজী টিভি (GTV) বাংলাদেশ স্পোর্টস ও ক্রিকেট লাইভ সম্প্রচার।',
     },
     {
       id: 'server-2',
-      name: 'GTV বাংলাদেশ লাইভ (গাজী টিভি)',
-      quality: '1080p HLS',
+      name: 'DD Sports Official Live (ক্রিকেট ও স্পোর্টস)',
+      quality: '1080p HD TV',
       url: VERIFIED_HLS_STREAM_2,
-      badge: 'বাংলাদেশ টিভি',
-      description: 'বাংলাদেশ গাজী টিভি (GTV) সরাসরি লাইভ স্পোর্টস ফিড।',
+      badge: 'অফিশিয়াল স্পোর্টস',
+      description: 'আন্তর্জাতিক ক্রিকেট ও স্পোর্টস অফিশিয়াল লাইভ টিভি চ্যানেল।',
     },
     {
       id: 'server-3',
-      name: 'DD Sports Official Live',
+      name: 'Cricket Gold HD Live',
       quality: '1080p HD TV',
       url: VERIFIED_HLS_STREAM_3,
-      badge: 'অফিশিয়াল স্পোর্টস',
-      description: 'আন্তর্জাতিক ক্রিকেট ও স্পোর্টস অফিশিয়াল লাইভ টিভি চ্যানেল।',
+      badge: 'ক্রিকেট ব্যাকআপ',
+      description: '২৪/৭ হাই-স্পিড ক্রিকেট ও স্পোর্টস লাইভ টিভি ফিড।',
     },
     {
       id: 'server-4',
@@ -317,7 +321,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-        setIsLoading(false);
         setHasPlaybackError(false);
 
         if (data.levels && data.levels.length > 0) {
@@ -338,14 +341,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           })
           .catch((err) => {
             console.log('Autoplay prevented, ready for user interaction:', err);
+            setIsLoading(false);
             setIsPlaying(false);
           });
       });
 
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        setIsLoading(false);
+        setHasPlaybackError(false);
+      });
+
       let networkRetryCount = 0;
+      let lastMediaRecoveryAt = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
-          console.warn('HLS fatal error encountered:', data.type);
+          console.warn('HLS fatal error encountered:', data.type, data.details);
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               networkRetryCount += 1;
@@ -355,7 +365,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 showToast('জিও-ব্লক/নেটওয়ার্ক বাধা শনাক্ত: সার্ভার VPN টানেলে অটো-কানেক্ট হচ্ছে...');
                 return;
               }
-              if (networkRetryCount <= 1) {
+              if (networkRetryCount <= 2) {
                 hls.startLoad();
               } else {
                 hls.destroy();
@@ -371,9 +381,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 }
               }
               break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
+            case Hls.ErrorTypes.MEDIA_ERROR: {
+              const now = Date.now();
+              if (now - lastMediaRecoveryAt < 5000) {
+                hls.swapAudioCodec();
+              }
+              lastMediaRecoveryAt = now;
               hls.recoverMediaError();
               break;
+            }
             default: {
               hls.destroy();
               if (!vpnActive && !networkConfig.isRelayed) {
@@ -430,15 +446,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [playbackStreamUrl, isHls, isDirectVideo, networkConfig]);
 
-  // Automatic stall/still-poster watchdog: if direct HLS video has not started moving with decoded frames within 6s or freezes >6s, switch to backup live server
+  // Smart stall/still-poster watchdog: gives large HD segments up to 16s to download & buffer without prematurely killing healthy streams
   useEffect(() => {
     if (!isDirectVideo || hasPlaybackError) return;
     let lastTime = -1;
+    let lastBufferedEnd = 0;
     let stagnantChecks = 0;
 
     const watchdog = setInterval(() => {
       const video = videoRef.current;
       if (!video) return;
+
+      // Never auto-switch if user paused or browser hasn't started playing yet
+      if (video.paused || video.ended) {
+        return;
+      }
+
+      const bufferedEnd =
+        video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
 
       if (
         video.readyState >= 2 &&
@@ -447,14 +472,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         video.currentTime !== lastTime
       ) {
         lastTime = video.currentTime;
+        lastBufferedEnd = bufferedEnd;
         stagnantChecks = 0;
         if (!isPlaying) setIsPlaying(true);
         if (isLoading) setIsLoading(false);
         return;
       }
 
+      // If buffer is actively growing, the stream is downloading cleanly (do not count as stalled)
+      if (bufferedEnd > lastBufferedEnd + 0.25) {
+        lastBufferedEnd = bufferedEnd;
+        stagnantChecks = Math.max(0, stagnantChecks - 1);
+        return;
+      }
+
       stagnantChecks += 1;
-      if (stagnantChecks >= 3) {
+      if (stagnantChecks >= 8) {
         stagnantChecks = 0;
         if (!vpnActive && !networkConfig.isRelayed) {
           setVpnActive(true);

@@ -158,7 +158,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
     setDetectedSourceType(sType);
     if (list.length === 0) {
       setBridgeError(
-        'এই অ্যাপস/লিংক থেকে কোনো সরাসরি স্ট্রিম (.m3u8 / .mp4 / Player) পাওয়া যায়নি। অন্য পেজ বা .m3u/.apk ফাইল দিয়ে চেষ্টা করুন।'
+        'এই প্লেলিস্ট বা লিংক থেকে কোনো বৈধ .m3u8 / .mp4 স্ট্রিম পাওয়া যায়নি। বৈধ .m3u, .m3u8 বা .json ফাইল/লিংক দিয়ে চেষ্টা করুন।'
       );
     } else {
       onNotify(
@@ -169,13 +169,14 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
 
   const VERIFIED_LEGAL_FAST_CHANNELS: Array<Omit<LiveTvChannel, 'channelNumber'>> = [
     {
-      id: 'legal_willow_sports',
-      name: 'Willow Sports HD (Official Cricket FAST)',
+      id: 'legal_gtv_live',
+      name: 'GTV Bangladesh Live (Gazi TV HD)',
       category: 'sports',
-      country: 'US',
-      logo: 'https://provider-static.plex.tv/epg/cms/production/acf3d1d8-c53e-49ca-86e9-0d9410b106b4/Willow_Sports_dark_Background_1500_1000_color.png',
-      streamUrl: 'https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8',
-      quality: '1080p Legal FAST',
+      country: 'BD',
+      logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/0/07/Gazi_TV_logo.svg/300px-Gazi_TV_logo.svg.png',
+      streamUrl:
+        'https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8',
+      quality: '1080p BD Live',
       isLive: true,
       featured: true,
       language: brandName || 'KhelaDekH',
@@ -283,12 +284,12 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
       language: brandName || 'KhelaDekH',
     },
     {
-      id: 'legal_fubo_sports',
-      name: 'Fubo Sports Network (Official FAST)',
+      id: 'legal_acc_sports',
+      name: 'ACC Digital Network (Basketball & Live Sports)',
       category: 'sports',
       country: 'US',
-      logo: 'https://i.imgur.com/qFNRJLb.png',
-      streamUrl: 'https://dnf08l6u6uxnz.cloudfront.net/master.m3u8',
+      logo: null,
+      streamUrl: 'https://raycom-accdn-firetv.amagi.tv/playlist.m3u8',
       quality: '1080p Official FAST',
       isLive: true,
       featured: true,
@@ -420,7 +421,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
       if (!appName.trim()) {
         setAppName(data.appName || file.name.replace(/\.[^.]+$/, ''));
       }
-      applyExtractedResults(data, data.sourceType || 'apk');
+      applyExtractedResults(data, data.sourceType || 'm3u');
     } catch (err: any) {
       setBridgeError(err?.message || 'ফাইল আপলোডে সমস্যা হয়েছে');
     } finally {
@@ -548,12 +549,13 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
             </span>
           </div>
           <h1 className="font-display text-2xl font-extrabold text-white">
-            আপনার অ্যাপস ব্রিজ ও নিজস্ব নামে ওয়েবসাইট ব্র্যান্ডিং
+            আপনার নিজস্ব নামে ব্র্যান্ডিং ও বৈধ প্লেলিস্ট স্টুডিও
           </h1>
           <p className="text-xs text-[#A5B1C2] max-w-2xl leading-relaxed">
-            আপনার অনুমোদিত যেকোনো অ্যাপস (.apk), ওয়েবসাইট লিংক বা M3U/JSON প্লেলিস্ট এখানে দিন —
-            সকল বিজ্ঞাপন (Ads/Popups/Trackers) স্বয়ংক্রিয়ভাবে বাদ পড়ে শুধু পরিষ্কার লাইভ স্ট্রিমগুলো আপনার নিজস্ব{' '}
-            <strong className="text-white">Brand Name</strong> ও লোগোতে চালু হবে এবং ৪X স্টেডিয়াম ও লাইভ টিভিসহ সব ফিচার অটুট থাকবে।
+            আপনার নিজস্ব বা অনুমোদিত{' '}
+            <strong className="text-white">.m3u / .m3u8 / .json</strong> প্লেলিস্ট বা ডাইরেক্ট স্ট্রিম লিংক দিন —
+            অ্যাড/ট্র্যাকার ফিল্টার করে পরিষ্কার লাইভ স্ট্রিমগুলো আপনার{' '}
+            <strong className="text-white">Brand Name</strong> ও লোগোতে চালু হবে।
           </p>
         </div>
 
@@ -754,10 +756,10 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
             </div>
             <div>
               <h2 className="text-base font-bold text-white">
-                ২. আপনার অনুমোদিত অ্যাপস / ওয়েবসাইট থেকে অ্যাড-মুক্ত লাইভ আনুন
+                ২. আপনার অনুমোদিত প্লেলিস্ট (.m3u / .m3u8 / .json) থেকে লাইভ যুক্ত করুন
               </h2>
               <p className="text-xs text-[#A5B1C2]">
-                লিংক পেস্ট করুন অথবা সরাসরি .apk / .m3u / .json / .html ফাইল আপলোড করুন — সিস্টেম অ্যাড বাদ দিয়ে লাইভ চ্যানেল আলাদা করে দেবে।
+                বৈধ .m3u, .m3u8 বা .json প্লেলিস্ট লিংক পেস্ট করুন অথবা ফাইল আপলোড করুন — চ্যানেলগুলো আপনার ব্র্যান্ড নামে আলাদা হয়ে যাবে।
               </p>
             </div>
           </div>
@@ -773,7 +775,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
               }`}
             >
               <Link2 className="w-3.5 h-3.5" />
-              <span>লিংক (URL/M3U)</span>
+              <span>লিংক (M3U / M3U8 / JSON)</span>
             </button>
             <button
               type="button"
@@ -785,7 +787,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
               }`}
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>APK / ফাইল আপলোড</span>
+              <span>প্লেলিস্ট ফাইল আপলোড</span>
             </button>
           </div>
         </div>
@@ -891,7 +893,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
           <form onSubmit={handleScanUrl} className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-white mb-1.5">
-                আপনার অনুমোদিত ডাইরেক্ট APK লিংক / ওয়েবসাইট / M3U / JSON URL দিন *
+                আপনার অনুমোদিত M3U / M3U8 / JSON প্লেলিস্ট লিংক দিন *
               </label>
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
@@ -899,7 +901,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
                   required
                   value={sourceUrl}
                   onChange={(e) => setSourceUrl(e.target.value)}
-                  placeholder="https://.../app.apk বা .../live বা .../playlist.m3u8 বা .../channels.json"
+                  placeholder="https://.../channels.m3u বা .../live.m3u8 বা .../channels.json"
                   className="flex-1 h-11 px-3.5 rounded-xl bg-[#101722] border border-white/15 text-xs sm:text-sm text-white font-mono focus:border-[#00B7FF] outline-none"
                 />
                 <button
@@ -912,7 +914,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
                   ) : (
                     <Globe className="w-4 h-4" />
                   )}
-                  <span>{scanning ? 'অ্যাড বাদ দিয়ে স্ক্যান হচ্ছে...' : 'অ্যাড বাদ দিয়ে লাইভ স্ক্যান করুন'}</span>
+                  <span>{scanning ? 'প্লেলিস্ট লোড হচ্ছে...' : 'প্লেলিস্ট থেকে চ্যানেল আনুন'}</span>
                 </button>
               </div>
             </div>
@@ -922,27 +924,27 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
             <Upload className="w-8 h-8 text-[#00B7FF] mx-auto" />
             <div>
               <p className="text-sm font-bold text-white">
-                আপনার অনুমোদিত .APK, .M3U, .M3U8, .JSON বা .HTML ফাইল আপলোড করুন (সর্বোচ্চ ৬০MB)
+                আপনার অনুমোদিত .M3U, .M3U8, .JSON বা .TXT প্লেলিস্ট ফাইল আপলোড করুন
               </p>
               <p className="text-xs text-[#A5B1C2] mt-1">
-                সার্ভার মেমোরিতে নিরাপদভাবে APK/প্লেলিস্টের ভেতর থেকে বিজ্ঞাপনের ডোমেইন বাদ দিয়ে শুধু লাইভ ভিডিও স্ট্রিমগুলো বের করে আনবে।
+                সার্ভার নিরাপদভাবে প্লেলিস্ট থেকে বিজ্ঞাপনের ট্র্যাকার বাদ দিয়ে শুধু বৈধ লাইভ চ্যানেলগুলো বের করে আনবে।
               </p>
             </div>
             <label className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#00B7FF] hover:bg-[#33C5FF] text-[#080B12] text-xs font-black cursor-pointer transition-all">
               {scanning ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>ফাইল বিশ্লেষণ ও অ্যাড রিমুভ হচ্ছে...</span>
+                  <span>প্লেলিস্ট বিশ্লেষণ হচ্ছে...</span>
                 </>
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  <span>APK বা ফাইল বাছাই করুন</span>
+                  <span>প্লেলিস্ট ফাইল বাছাই করুন</span>
                 </>
               )}
               <input
                 type="file"
-                accept=".apk,.zip,.m3u,.m3u8,.json,.html,.htm,.txt"
+                accept=".m3u,.m3u8,.json,.txt"
                 disabled={scanning}
                 onChange={handleUploadSourceFile}
                 className="hidden"
@@ -1126,7 +1128,7 @@ export const SourceBridgeTab: React.FC<SourceBridgeTabProps> = ({ onNotify, onTe
 
         {customChannels.length === 0 ? (
           <div className="p-8 rounded-xl bg-[#101722] border border-white/5 text-center text-xs text-[#A5B1C2]">
-            এখনও কোনো অ্যাপস বা প্লেলিস্ট থেকে চ্যানেল ইমপোর্ট করা হয়নি। উপরে লিংক বা APK আপলোড করে লাইভ আনুন।
+            এখনও কোনো প্লেলিস্ট থেকে চ্যানেল ইমপোর্ট করা হয়নি। উপরে বৈধ .m3u, .m3u8 বা .json লিংক/ফাইল দিয়ে চ্যানেল যুক্ত করুন।
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

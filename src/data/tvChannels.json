@@ -7,13 +7,13 @@
     "country": "BD",
     "streamUrl": "https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8",
     "backupStreamUrls": [
-      "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-      "https://r.il.cdn-redge.media/livehls/oil/freetv/live/sport_5_plus/live.livx/playlist.m3u8",
-      "https://raycom-accdn-firetv.amagi.tv/playlist.m3u8",
-      "https://a62dad94.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWV1X0ZJRkFQbHVzRW5nbGlzaF9ITFM/playlist.m3u8",
-      "https://imn-live.esite-lab.com/hls/iraqia-sports-1.m3u8"
+      "https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8",
+      "https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/manifest.m3u8",
+      "https://bein-xtra-bein.amagi.tv/playlist.m3u8",
+      "https://95cedebd.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/Vml6aW9fRklGQVBsdXNFbmdsaXNoX0hMUw/playlist.m3u8",
+      "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8"
     ],
-    "quality": "1080p Full HD",
+    "quality": "720p HD",
     "isLive": true,
     "featured": true,
     "language": "Bangla",
@@ -234,16 +234,16 @@
   },
   {
     "channelNumber": 18,
-    "id": "bd_green_tv",
-    "name": "Green TV (গ্রীন টিভি)",
-    "category": "entertainment",
+    "id": "bd_ekushey_tv",
+    "name": "Ekushey TV (একুশে টিভি Live)",
+    "category": "news",
     "country": "BD",
-    "streamUrl": "https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/greentv.stream/live-orgin/greentv.stream/playlist.m3u8",
+    "streamUrl": "https://ekusheyserver.com/etvlivesn.m3u8",
     "quality": "720p HD",
     "isLive": true,
     "featured": true,
     "language": "Bangla",
-    "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b3/Green_TV_logo.png/300px-Green_TV_logo.png"
+    "logo": "https://i.imgur.com/lRpkGHj.png"
   },
   {
     "channelNumber": 19,
@@ -299,16 +299,16 @@
   },
   {
     "channelNumber": 23,
-    "id": "bd_ekhon_tv",
-    "name": "Ekhon TV (এখন টিভি)",
-    "category": "news",
+    "id": "bd_deshi_tv",
+    "name": "Deshi TV (দেশি টিভি Live)",
+    "category": "entertainment",
     "country": "BD",
-    "streamUrl": "https://tplay.live/out/bangladesh/ekhontv.index.m3u8",
+    "streamUrl": "https://deshitv.deshitv24.net/live/myStream/playlist.m3u8",
     "quality": "720p HD",
     "isLive": true,
     "featured": true,
     "language": "Bangla",
-    "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/5/52/Ekhon_logo.png/300px-Ekhon_logo.png"
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Deshi_TV_Logo.png/300px-Deshi_TV_Logo.png"
   },
   {
     "channelNumber": 24,
@@ -434,8 +434,8 @@
     "category": "sports",
     "country": "IQ",
     "logo": "https://i.imgur.com/DrrlxTO.png",
-    "streamUrl": "https://imn-live.esite-lab.com/hls/iraqia-sports-1.m3u8",
-    "quality": "720p",
+    "streamUrl": "https://skynewsau-live-premium.akamaized.net/hls/live/2105307/foxsportsnews/live_1080p.m3u8",
+    "quality": "1080p",
     "isLive": true,
     "channelNumber": 33,
     "language": "English/Global"
@@ -1468,7 +1468,7 @@
     "category": "sports",
     "country": "US",
     "logo": "https://i.imgur.com/qFNRJLb.png",
-    "streamUrl": "https://dnf08l6u6uxnz.cloudfront.net/master.m3u8",
+    "streamUrl": "https://raycom-accdn-firetv.amagi.tv/playlist.m3u8",
     "quality": "1080p",
     "isLive": true,
     "channelNumber": 112,
@@ -3710,11 +3710,11 @@
     "category": "sports",
     "country": "US",
     "logo": "https://provider-static.plex.tv/epg/cms/production/acf3d1d8-c53e-49ca-86e9-0d9410b106b4/Willow_Sports_dark_Background_1500_1000_color.png",
-    "streamUrl": "https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8",
+    "streamUrl": "https://tvsen5.aynaott.com/willowhd/index.m3u8",
     "backupStreamUrls": [
-      "https://d36r8jifhgsk5j.cloudfront.net/Willow_TV1080p.m3u8"
+      "https://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/gazibdz.stream/live-orgin/gazibdz.stream/playlist.m3u8"
     ],
-    "quality": "1080p",
+    "quality": "720p",
     "isLive": true,
     "channelNumber": 284,
     "language": "English/Global"

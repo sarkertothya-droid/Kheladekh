@@ -79,11 +79,12 @@ const SingleSlotPlayer: React.FC<MultiViewPlayerProps> = ({
 
     // If source url is empty or fails, pick verified adaptive HLS fallback based on index
     const fallbacks = [
-      VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
-      VERIFIED_SPORTS_STREAMS.FIVE_PLUS,
-      VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
+      VERIFIED_SPORTS_STREAMS.GTV_LIVE,
+      VERIFIED_SPORTS_STREAMS.DD_SPORTS,
+      VERIFIED_SPORTS_STREAMS.BEIN_XTRA,
       VERIFIED_SPORTS_STREAMS.FIFA_PLUS,
-      VERIFIED_SPORTS_STREAMS.IRAQIA_SPORT,
+      VERIFIED_SPORTS_STREAMS.RED_BULL_TV,
+      VERIFIED_SPORTS_STREAMS.ACC_SPORTS,
     ];
     const url = slot.streamUrl && slot.streamUrl.trim().length > 5
       ? slot.streamUrl.trim()

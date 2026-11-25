@@ -47,6 +47,9 @@ export interface StreamNetworkConfig {
     liveSyncDurationCount: number;
     liveMaxLatencyDurationCount: number;
     backBufferLength: number;
+    maxBufferLength: number;
+    maxMaxBufferLength: number;
+    startFragPrefetch: boolean;
     manifestLoadingTimeOut: number;
     manifestLoadingMaxRetry: number;
     fragLoadingTimeOut: number;
@@ -131,7 +134,11 @@ const isCartoonStream = (url?: string) =>
   url.includes('bipbop') ||
   url.includes('x36xhzz') ||
   url.includes('mov_bbb') ||
-  url.includes('v_645516');
+  url.includes('v_645516') ||
+  url.includes('d36r8jifhgsk5j.cloudfront.net') ||
+  url.includes('dnf08l6u6uxnz.cloudfront.net') ||
+  url.includes('imn-live.esite-lab.com') ||
+  url.includes('streamtp10.com');
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile, refreshProfile } = useAuth();
@@ -145,7 +152,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (cached) {
         const parsed = JSON.parse(cached) as SportEvent[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter((e) => !isLegacyFakeEventId(e.id));
+          return parsed
+            .filter((e) => !isLegacyFakeEventId(e.id))
+            .map((e) => ({
+              ...e,
+              authorizedViewingUrl: isCartoonStream(e.authorizedViewingUrl)
+                ? VERIFIED_SPORTS_STREAMS.GTV_LIVE
+                : e.authorizedViewingUrl,
+            }));
         }
       }
     } catch {}
@@ -227,11 +241,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lowerUrl.includes('dailymotion.com');
 
     const requiresCorsRelay =
+      lowerUrl.startsWith('http://') ||
       lowerUrl.includes('amagi.tv') ||
       lowerUrl.includes('wurl.com') ||
       lowerUrl.includes('antenaplay.ro') ||
       lowerUrl.includes('multistream.it') ||
-      lowerUrl.includes('ncare.live');
+      lowerUrl.includes('ncare.live') ||
+      lowerUrl.includes('ekusheyserver.com') ||
+      lowerUrl.includes('sofast.tv') ||
+      lowerUrl.includes('aftermind.xyz') ||
+      lowerUrl.includes('shariarsuvo.com');
 
     const shouldRelay = Boolean(
       (activeVpn || requiresCorsRelay) &&
@@ -256,13 +275,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       hlsConfig: {
         enableWorker: true,
         lowLatencyMode: false,
-        liveSyncDurationCount: 2,
+        liveSyncDurationCount: 1,
         liveMaxLatencyDurationCount: 6,
-        backBufferLength: shouldRelay ? 90 : 60,
-        manifestLoadingTimeOut: shouldRelay ? 20000 : 15000,
-        manifestLoadingMaxRetry: shouldRelay ? 4 : 3,
+        backBufferLength: 60,
+        maxBufferLength: 24,
+        maxMaxBufferLength: 48,
+        startFragPrefetch: true,
+        manifestLoadingTimeOut: 18000,
+        manifestLoadingMaxRetry: 4,
         fragLoadingTimeOut: 25000,
-        fragLoadingMaxRetry: shouldRelay ? 5 : 3,
+        fragLoadingMaxRetry: 4,
         xhrSetup: (xhr: XMLHttpRequest, requestUrl: string) => {
           if (requestUrl.includes('/api/vpn-relay')) {
             xhr.setRequestHeader('X-KhelaDekH-VPN-Mode', activeVpn ? 'enabled' : 'auto');
@@ -393,14 +415,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             item.authorizedViewingUrl && !isCartoonStream(item.authorizedViewingUrl)
               ? item.authorizedViewingUrl
               : sportKey === 'cricket'
-              ? VERIFIED_SPORTS_STREAMS.WILLOW_SPORTS
+              ? VERIFIED_SPORTS_STREAMS.GTV_LIVE
               : sportKey === 'football'
               ? VERIFIED_SPORTS_STREAMS.BEIN_XTRA
               : sportKey === 'tennis'
               ? VERIFIED_SPORTS_STREAMS.TENNIS_CHANNEL
               : sportKey === 'basketball'
-              ? VERIFIED_SPORTS_STREAMS.FUBO_SPORTS
-              : VERIFIED_SPORTS_STREAMS.FIFA_PLUS;
+              ? VERIFIED_SPORTS_STREAMS.ACC_SPORTS
+              : VERIFIED_SPORTS_STREAMS.GTV_LIVE;
 
           const evObj: SportEvent = {
             id: evId,
